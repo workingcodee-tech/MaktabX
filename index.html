@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MaktabX</title>
+    <meta name="description" content="MaktabX - Maktab o'qituvchilari, ma'murlar va dasturchilar uchun zamonaviy o'quvchilar ma'lumotlari boshqaruv tizimi" />
+    <meta property="og:title" content="MaktabX" />
+    <meta property="og:description" content="MaktabX - Maktab o'qituvchilari, ma'murlar va dasturchilar uchun zamonaviy o'quvchilar ma'lumotlari boshqaruv tizimi" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="/maktabx-logo.png" />
+    <link rel="stylesheet" href="/src/index.css" />
+  </head>
+  <body class="text-slate-900 h-screen w-screen overflow-hidden antialiased flex flex-col select-none relative">
+    <!-- Orqa fon uchun belgilangan iOS uslubidagi asosiy wallpaper -->
+    <div id="app-background-wallpaper" class="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none" style="background-image: url('/ios-wallpaper.jpg');"></div>
+
+    <!-- Saytga yangi kirganda dastlabki zamonaviy splash loading ekrani -->
+    <div id="initial-splash-loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#F8FAFC] select-none overflow-hidden">
+      <div class="flex flex-col items-center max-w-sm w-full px-6 text-center">
+        
+        <!-- Sayt logosi konteyneri (saytga kirgach 1 soniyadan so'ng o'zgacha animatsiya bilan chiqadi) -->
+        <div id="splash-logo-box" class="opacity-0 transition-opacity duration-300 flex flex-col items-center">
+          <div class="relative mb-5" id="splash-logo-card">
+            <!-- Nafis aylanuvchi orbital nur halqasi -->
+            <div class="absolute -inset-3 rounded-full border border-dashed border-blue-400/40 animate-orbit-spin pointer-events-none"></div>
+            <div class="absolute -inset-1 rounded-full border border-indigo-400/30 animate-orbit-reverse pointer-events-none"></div>
+
+            <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white shadow-xl shadow-indigo-100/80 border border-slate-200/80 flex items-center justify-center p-3.5 relative z-10">
+              <img 
+                src="/maktabx-logo.png" 
+                alt="MaktabX Logo" 
+                class="w-full h-full object-contain drop-shadow-sm" 
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center shadow-xs z-20">
+              <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+            </div>
+          </div>
+
+          <!-- Tizim nomi va tavsifi -->
+          <div class="space-y-1 mb-5">
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Maktab<span class="text-blue-600">X</span></h1>
+            <p class="text-xs font-medium text-slate-500">Ta'lim va O'quvchilar Boshqaruv Tizimi</p>
+          </div>
+        </div>
+
+        <!-- PRO DARAJADAGI TOZA VA ZAMONAVIY LOADING ANIMATSIYASI -->
+        <div id="splash-loading-box" class="opacity-0 transition-all duration-700 flex flex-col items-center justify-center w-full my-2">
+          
+          <!-- Suyuq Aurora nur chizig'i (Ultra-sleek Minimalist Liquid Beam) -->
+          <div class="w-48 sm:w-56 h-1.5 bg-slate-200/70 rounded-full overflow-hidden relative shadow-inner">
+            <div class="animate-aurora-fluid absolute inset-y-0 rounded-full bg-linear-to-r from-blue-600 via-indigo-500 to-cyan-400 shadow-[0_0_12px_2px_rgba(59,130,246,0.6)]"></div>
+          </div>
+          <p id="splash-status-text" class="text-[11px] font-medium text-slate-400 mt-2.5 tracking-wide">Server bilan ma'lumotlar yangilanmoqda...</p>
+
+        </div>
+
+        <!-- WORKING CODE Brend Logosi va Maxsus Animatsiyasi (Loading pastida) -->
+        <div id="splash-working-code-box" class="opacity-0 transition-all duration-700 mt-10 flex flex-col items-center">
+          <div class="relative flex items-center justify-center">
+            <!-- Pulsing soft halo ring -->
+            <div class="absolute -inset-2.5 rounded-full bg-linear-to-r from-blue-500/20 via-indigo-500/30 to-blue-600/20 blur-md animate-working-code-pulse"></div>
+            
+            <!-- Working Code Logo Badge -->
+            <div id="splash-wc-badge-card" class="relative w-16 h-16 rounded-full bg-white shadow-xl shadow-blue-600/20 border border-slate-100 flex items-center justify-center p-0.5 overflow-hidden">
+              <img 
+                src="/working-code-logo.svg" 
+                alt="Working Code Logo" 
+                class="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          </div>
+
+          <!-- Working Code Title & Slogan -->
+          <div class="mt-2.5 flex flex-col items-center">
+            <span class="text-[13px] font-black tracking-wider text-slate-800 flex items-center gap-1">
+              WORKING <span class="text-blue-600 font-extrabold">CODE</span>
+            </span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="app" class="relative z-10 flex h-full w-full overflow-hidden"></div>
+    <div id="modal-container"></div>
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

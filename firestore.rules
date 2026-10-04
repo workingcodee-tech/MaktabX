@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    match /schools/{schoolId} {
+      allow get: if isValidId(schoolId);
+      allow list: if true;
+      allow create, update: if isValidId(schoolId);
+      allow delete: if isValidId(schoolId);
+    }
+
+    match /classes/{classId} {
+      allow get: if isValidId(classId);
+      allow list: if true;
+      allow create, update: if isValidId(classId);
+      allow delete: if isValidId(classId);
+    }
+
+    match /students/{studentId} {
+      allow get: if isValidId(studentId);
+      allow list: if true;
+      allow create, update: if isValidId(studentId);
+      allow delete: if isValidId(studentId);
+    }
+
+    match /system/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if true;
+      allow create, update: if isValidId(configId);
+      allow delete: if isValidId(configId);
+    }
+
+    match /recoveryRequests/{requestId} {
+      allow get: if isValidId(requestId);
+      allow list: if true;
+      allow create, update: if isValidId(requestId);
+      allow delete: if isValidId(requestId);
+    }
+
+    match /trash/{trashId} {
+      allow get: if isValidId(trashId);
+      allow list: if true;
+      allow create, update: if isValidId(trashId);
+      allow delete: if isValidId(trashId);
+    }
+
+    match /shifts/{shiftId} {
+      allow get: if isValidId(shiftId);
+      allow list: if true;
+      allow create, update: if isValidId(shiftId);
+      allow delete: if isValidId(shiftId);
+    }
+
+    match /duty_rosters/{rosterId} {
+      allow get: if isValidId(rosterId);
+      allow list: if true;
+      allow create, update: if isValidId(rosterId);
+      allow delete: if isValidId(rosterId);
+    }
+
+    match /attendance_records/{recordId} {
+      allow get: if isValidId(recordId);
+      allow list: if true;
+      allow create, update: if isValidId(recordId);
+      allow delete: if isValidId(recordId);
+    }
+
+    match /duty_absences/{absenceId} {
+      allow get: if isValidId(absenceId);
+      allow list: if true;
+      allow create, update: if isValidId(absenceId);
+      allow delete: if isValidId(absenceId);
+    }
+
+    match /admin_notifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+      allow create, update: if isValidId(notificationId);
+      allow delete: if isValidId(notificationId);
+    }
+  }
+}
+

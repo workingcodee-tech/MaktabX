@@ -1,0 +1,6 @@
+{
+  "name": "MaktabX",
+  "description": "MaktabX - Maktab o'qituvchilari, ma'murlar va dasturchilar uchun zamonaviy o'quvchilar ma'lumotlari boshqaruv tizimi",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

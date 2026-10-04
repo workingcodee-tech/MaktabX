@@ -1,0 +1,215 @@
+{
+  "entities": {
+    "School": {
+      "title": "School",
+      "description": "Maktab ma'lumotlari va ma'muriyat parametrlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "district": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 300 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "adminPassword": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "name", "adminPassword"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "Maktab sinfi va sinf rahbari ma'lumotlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 50 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "loginCode": { "type": "string", "maxLength": 100 },
+        "recoveryId": { "type": "string", "maxLength": 50 },
+        "teacherPhone": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "name", "loginCode"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "O'quvchining to'liq dosye ma'lumotlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "classId": { "type": "string", "maxLength": 128 },
+        "lastName": { "type": "string", "maxLength": 100 },
+        "firstName": { "type": "string", "maxLength": 100 },
+        "middleName": { "type": "string", "maxLength": 100 },
+        "fullName": { "type": "string", "maxLength": 250 },
+        "gender": { "type": "string", "maxLength": 20 },
+        "birthDate": { "type": "string", "maxLength": 30 },
+        "age": { "type": "string", "maxLength": 10 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "birthPlace": { "type": "string", "maxLength": 200 },
+        "fhdyoOrgan": { "type": "string", "maxLength": 200 },
+        "dalolatnomaNumber": { "type": "string", "maxLength": 50 },
+        "guvohnomaSeriaNumber": { "type": "string", "maxLength": 50 },
+        "passportNumber": { "type": "string", "maxLength": 50 },
+        "pinfl": { "type": "string", "maxLength": 30 },
+        "motherFullName": { "type": "string", "maxLength": 200 },
+        "motherPhone": { "type": "string", "maxLength": 50 },
+        "motherBirthDate": { "type": "string", "maxLength": 30 },
+        "motherAge": { "type": "string", "maxLength": 10 },
+        "motherJob": { "type": "string", "maxLength": 200 },
+        "fatherFullName": { "type": "string", "maxLength": 200 },
+        "fatherPhone": { "type": "string", "maxLength": 50 },
+        "fatherBirthDate": { "type": "string", "maxLength": 30 },
+        "fatherAge": { "type": "string", "maxLength": 10 },
+        "fatherJob": { "type": "string", "maxLength": 200 },
+        "address": { "type": "string", "maxLength": 300 },
+        "extraCourses": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "O'quvchining qo'shimcha darslari va o'quv markazlari (4-5 tagacha: dars nomi, o'qituvchi ismi, o'qituvchi telefoni, o'quv markazi, markaz manzili)"
+        },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "classId", "fullName"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Tizim konfiguratsiyasi va dasturchi ma'lumotlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 50 },
+        "login": { "type": "string", "maxLength": 50 },
+        "password": { "type": "string", "maxLength": 50 },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["login", "password"]
+    },
+    "RecoveryRequest": {
+      "title": "RecoveryRequest",
+      "description": "O'qituvchilarning hisobni tiklash yoki ID orqali kirish so'rovlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "classId": { "type": "string", "maxLength": 128 },
+        "className": { "type": "string", "maxLength": 50 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "teacherPhone": { "type": "string", "maxLength": 50 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "schoolName": { "type": "string", "maxLength": 200 },
+        "recoveryId": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "message": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["id", "classId", "schoolId", "status"]
+    },
+    "TrashItem": {
+      "title": "TrashItem",
+      "description": "O'chirilgan foydalanuvchilar (1 hafta serverda saqlanadi)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 30 },
+        "login": { "type": "string", "maxLength": 100 },
+        "deletedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "type", "login", "deletedAt"]
+    },
+    "Shift": {
+      "title": "Shift",
+      "description": "Maktab smenalari (1-smena, 2-smena) va biriktirilgan sinflar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "startTime": { "type": "string", "maxLength": 20 },
+        "endTime": { "type": "string", "maxLength": 20 },
+        "cutoffTime": { "type": "string", "maxLength": 20 },
+        "classIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ushbu smenaga biriktirilgan sinf ID raqamlari"
+        },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "name"]
+    },
+    "DutyRoster": {
+      "title": "DutyRoster",
+      "description": "Smenalar bo'yicha navbatchi o'qituvchilar jadvali va zaxira o'qituvchilar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "shiftId": { "type": "string", "maxLength": 128 },
+        "dayOfWeek": { "type": "number" },
+        "primaryTeacherName": { "type": "string", "maxLength": 150 },
+        "primaryTeacherPhone": { "type": "string", "maxLength": 50 },
+        "backupTeacherName": { "type": "string", "maxLength": 150 },
+        "backupTeacherPhone": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["id", "schoolId", "shiftId", "dayOfWeek"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Kunlik o'quvchilar va o'qituvchilar davomati yozuvi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "shiftId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 30 },
+        "status": { "type": "string", "maxLength": 30 },
+        "isFailoverActivated": { "type": "boolean" },
+        "totalStudents": { "type": "number" },
+        "presentCount": { "type": "number" },
+        "absentCount": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "shiftId", "date"]
+    }
+  },
+  "firestore": {
+    "/schools/{schoolId}": {
+      "schema": "School",
+      "description": "Ro'yxatga olingan maktablar kolleksiyasi"
+    },
+    "/classes/{classId}": {
+      "schema": "Class",
+      "description": "Sinflar kolleksiyasi"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "O'quvchilar dosyelari kolleksiyasi"
+    },
+    "/system/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Tizim umumiy sozlamalari va dasturchi hisobi"
+    },
+    "/recoveryRequests/{requestId}": {
+      "schema": "RecoveryRequest",
+      "description": "O'qituvchilarning parolni tiklash va kirish so'rovlari"
+    },
+    "/trash/{trashId}": {
+      "schema": "TrashItem",
+      "description": "O'chirilgan foydalanuvchilar arxivi (7 kun davomida tiklash mumkin)"
+    },
+    "/shifts/{shiftId}": {
+      "schema": "Shift",
+      "description": "Maktab smenalari kolleksiyasi"
+    },
+    "/duty_rosters/{rosterId}": {
+      "schema": "DutyRoster",
+      "description": "Navbatchilik jadvali kolleksiyasi"
+    },
+    "/attendance_records/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Kunlik davomat qaydlari kolleksiyasi"
+    }
+  }
+}

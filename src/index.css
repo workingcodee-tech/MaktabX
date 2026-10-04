@@ -1,0 +1,868 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #0f172a;
+    background-color: #0d383e;
+    background-image: url('/ios-wallpaper.jpg');
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print Styles for Student Dossier (Chop etish) */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  .no-print,
+  #app-header,
+  #role-banner,
+  #toast-container,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+  
+  #main-content {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+  
+  .print-page {
+    box-shadow: none !important;
+    border: 1px solid #94a3b8 !important;
+    padding: 24px !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    page-break-after: always;
+  }
+  
+  .print-header {
+    display: block !important;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.18s ease-out forwards;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.bg-grid-pattern {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+}
+
+@keyframes pulseSlow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.06); }
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 8s ease-in-out infinite;
+}
+
+/* Skeleton Loading Shimmer Effect */
+@keyframes skeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #f1f5f9;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: skeletonShimmer 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  content: '';
+}
+
+/* Uzunchoq Cho'ziluvchan Loading Animatsiyasi (Elastic Stretch Progress Bar) */
+@keyframes elasticStretch {
+  0% {
+    left: -35%;
+    width: 35%;
+  }
+  35% {
+    left: 15%;
+    width: 65%;
+  }
+  65% {
+    left: 60%;
+    width: 50%;
+  }
+  100% {
+    left: 105%;
+    width: 25%;
+  }
+}
+
+.elastic-progress-bar {
+  animation: elasticStretch 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* =========================================================
+   PRO LEVEL 3D QUANTUM GYROSCOPE & AURORA LOADING ANIMATSIYASI
+   ========================================================= */
+
+.gyro-loader-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  perspective: 900px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gyro-ring {
+  position: absolute;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+}
+
+.gyro-ring-1 {
+  border-top: 2.5px solid #2563eb;
+  border-bottom: 2.5px solid transparent;
+  border-left: 2.5px solid transparent;
+  border-right: 2.5px solid transparent;
+  animation: gyroSpin1 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.7));
+}
+
+.gyro-ring-2 {
+  border-right: 2.5px solid #6366f1;
+  border-top: 2.5px solid transparent;
+  border-bottom: 2.5px solid transparent;
+  border-left: 2.5px solid transparent;
+  animation: gyroSpin2 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.7));
+}
+
+.gyro-ring-3 {
+  border-bottom: 2.5px solid #06b6d4;
+  border-top: 2.5px solid transparent;
+  border-left: 2.5px solid transparent;
+  border-right: 2.5px solid transparent;
+  animation: gyroSpin3 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.7));
+}
+
+@keyframes gyroSpin1 {
+  0% {
+    transform: rotateX(35deg) rotateY(-45deg) rotateZ(0deg);
+  }
+  100% {
+    transform: rotateX(35deg) rotateY(-45deg) rotateZ(360deg);
+  }
+}
+
+@keyframes gyroSpin2 {
+  0% {
+    transform: rotateX(50deg) rotateY(15deg) rotateZ(0deg);
+  }
+  100% {
+    transform: rotateX(50deg) rotateY(15deg) rotateZ(360deg);
+  }
+}
+
+@keyframes gyroSpin3 {
+  0% {
+    transform: rotateX(35deg) rotateY(60deg) rotateZ(0deg);
+  }
+  100% {
+    transform: rotateX(35deg) rotateY(60deg) rotateZ(360deg);
+  }
+}
+
+/* Suyuq Aurora nur chizig'i (Ultra-sleek Minimalist Progress) */
+@keyframes auroraFluidMotion {
+  0% {
+    left: -35%;
+    width: 25%;
+  }
+  40% {
+    left: 20%;
+    width: 60%;
+  }
+  75% {
+    left: 65%;
+    width: 45%;
+  }
+  100% {
+    left: 110%;
+    width: 20%;
+  }
+}
+
+.animate-aurora-fluid {
+  animation: auroraFluidMotion 1.7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* =========================================================
+   YANGI ZAMONAVIY 100X PROGRESS VA HUD ANIMATSIYALARI
+   ========================================================= */
+
+/* Shimmer lazer oqimi (Progress bar ichida oquvchi yorug'lik) */
+@keyframes shimmerStreamAnimation {
+  0% {
+    transform: translateX(-150%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-shimmer-stream {
+  animation: shimmerStreamAnimation 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Lazer uchquni (Comet Spark) pulsatsiyasi */
+@keyframes sparkGlowPulse {
+  0%, 100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 10px 2px rgba(56, 189, 248, 0.8), 0 0 4px 1px rgba(255, 255, 255, 0.9);
+  }
+  50% {
+    transform: scale(1.25);
+    box-shadow: 0 0 18px 4px rgba(99, 102, 241, 0.95), 0 0 8px 2px rgba(255, 255, 255, 1);
+  }
+}
+
+.animate-spark-glow {
+  animation: sparkGlowPulse 1.2s ease-in-out infinite;
+}
+
+/* Loading HUD kartochkasi uchun mayin nafas oluvchi nur */
+@keyframes hudCardFloat {
+  0%, 100% {
+    box-shadow: 0 12px 36px -8px rgba(37, 99, 235, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
+  }
+  50% {
+    box-shadow: 0 16px 42px -6px rgba(99, 102, 241, 0.16), 0 6px 16px -2px rgba(37, 99, 235, 0.08);
+  }
+}
+
+.animate-hud-glow {
+  animation: hudCardFloat 3s ease-in-out infinite;
+}
+
+/* Markaziy logo atrofidagi nozik orbital halqa */
+@keyframes orbitRingSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-orbit-spin {
+  animation: orbitRingSpin 14s linear infinite;
+}
+
+@keyframes orbitRingReverseSpin {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-orbit-reverse {
+  animation: orbitRingReverseSpin 20s linear infinite;
+}
+
+/* O'zgacha logo chiqish animatsiyasi (Spring Pop + 3D Rotation + Glow) */
+@keyframes logoEnterSpecial {
+  0% {
+    opacity: 0;
+    transform: scale(0.25) translateY(50px) rotate(-14deg);
+    filter: blur(12px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12) translateY(-8px) rotate(3deg);
+    filter: blur(0px);
+  }
+  80% {
+    transform: scale(0.96) translateY(3px) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0px) rotate(0deg);
+  }
+}
+
+.animate-logo-special-enter {
+  animation: logoEnterSpecial 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Sayt logosi uchun mayin suzish va nur taralish animatsiyasi */
+@keyframes logoFloat {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.15);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 20px 35px -5px rgba(59, 130, 246, 0.28);
+  }
+}
+
+.animate-logo-float {
+  animation: logoFloat 2.6s ease-in-out infinite;
+}
+
+/* =========================================================
+   WORKING CODE BRENDI UCHUN MAXSUS ANIMATSIYALAR
+   ========================================================= */
+@keyframes workingCodeBadgeEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.8);
+    filter: blur(6px);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.05);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-working-code-enter {
+  animation: workingCodeBadgeEnter 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes workingCodePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+.animate-working-code-pulse {
+  animation: workingCodePulse 2.8s ease-in-out infinite;
+}
+
+@keyframes workingCodeFloat {
+  0%, 100% {
+    transform: translateY(0px);
+    box-shadow: 0 4px 14px -2px rgba(0, 102, 255, 0.18);
+  }
+  50% {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 22px -2px rgba(0, 102, 255, 0.35);
+  }
+}
+
+.animate-working-code-float {
+  animation: workingCodeFloat 2.6s ease-in-out infinite;
+}
+
+/* PowerPoint Slide Push Transitions */
+@keyframes pptSlideOutLeft {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes pptSlideInFromRight {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+.ppt-slide-out {
+  animation: pptSlideOutLeft 0.75s cubic-bezier(0.65, 0, 0.15, 1) forwards !important;
+  will-change: transform;
+}
+
+.ppt-slide-in {
+  animation: pptSlideInFromRight 0.75s cubic-bezier(0.65, 0, 0.15, 1) forwards !important;
+  will-change: transform;
+}
+
+/* Modal O'zgacha Ochilish va Yopilish Animatsiyalari (Special Modal Animations) */
+@keyframes modalBackdropEnter {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes modalBackdropExit {
+  0% {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+  100% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+}
+
+@keyframes modalDialogSpecialEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.86) translateY(24px);
+    filter: blur(4px);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.025) translateY(-2px);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalDialogSpecialExit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.91) translateY(20px);
+    filter: blur(4px);
+  }
+}
+
+.modal-backdrop-enter {
+  animation: modalBackdropEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-backdrop-exit {
+  animation: modalBackdropExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none !important;
+}
+
+.modal-dialog-enter {
+  animation: modalDialogSpecialEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+
+.modal-dialog-exit {
+  animation: modalDialogSpecialExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+
+/* =========================================================
+   iOS GLASSMORPHISM DESIGN SYSTEM (Apple Frosted Glass & Contrast)
+   ========================================================= */
+
+:root {
+  --ios-glass-card-bg: rgba(255, 255, 255, 0.62);
+  --ios-glass-card-hover: rgba(255, 255, 255, 0.78);
+  --ios-glass-subtle-bg: rgba(255, 255, 255, 0.42);
+  --ios-glass-border: rgba(255, 255, 255, 0.70);
+  --ios-glass-border-subtle: rgba(255, 255, 255, 0.50);
+  --ios-glass-blur: 24px;
+  --ios-glass-saturate: 190%;
+  --ios-glass-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.05), inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+/* 1. iOS Frosted Glass Kartalar va Asosiy Konteynerlar */
+.ios-glass-card,
+#app:not(:has(#login-card)) .bg-white:not(.no-glass):not(.badge-solid):not(#splash-logo-card *),
+#app:not(:has(#login-card)) .bg-white\/95,
+#app:not(:has(#login-card)) .bg-white\/90,
+#app:not(:has(#login-card)) .bg-white\/80 {
+  background-color: var(--ios-glass-card-bg) !important;
+  backdrop-filter: blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
+  border-color: var(--ios-glass-border) !important;
+  box-shadow: var(--ios-glass-shadow);
+}
+
+/* Hover qilinganda mayin yorishish */
+#app:not(:has(#login-card)) .bg-white:hover,
+#app tr:hover {
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 2. Yuqori Navigatsiya / Header (iOS Nav Bar) */
+#app header,
+.ios-glass-header {
+  background-color: rgba(255, 255, 255, 0.58) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.65) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), inset 0 -1px 0 0 rgba(255, 255, 255, 0.4) !important;
+}
+
+/* 3. Suzuvchi Pastki Menyu (iOS Floating Capsule Pill) */
+#bottom-nav-bar,
+.ios-glass-nav {
+  background-color: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(30px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.22), 0 4px 12px -2px rgba(15, 23, 42, 0.08), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95) !important;
+  width: fit-content !important;
+  max-width: calc(100vw - 2rem) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important; /* Ixcham va mutanosib oraliq */
+}
+
+/* Tezkor filtr tugmalari uchun haqiqiy shaffof iOS Frosted Glass */
+.filter-chip {
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  height: 35px !important;
+  line-height: 1 !important;
+  border-radius: 0.75rem !important;
+  transition: all 0.2s ease !important;
+}
+
+/* No-faol holatdagi filtr tugmalari (Shaffof oyna ko'rinishi) */
+.filter-chip:not(.bg-indigo-600):not(.bg-blue-600):not(.bg-pink-600) {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(20px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 8px -1px rgba(15, 23, 42, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.filter-chip:not(.bg-indigo-600):not(.bg-blue-600):not(.bg-pink-600):hover {
+  background-color: rgba(255, 255, 255, 0.70) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -1px rgba(15, 23, 42, 0.12), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+/* Faol holatdagi filtr tugmalari (Yorqin va zamonaviy) */
+.filter-chip.bg-indigo-600,
+.filter-chip.bg-blue-600,
+.filter-chip.bg-pink-600 {
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+  box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+/* 4. Modal Dialoglar va Oynalar (iOS Sheet / Dialog Glass) */
+.modal-dialog-box {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(32px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow: 0 25px 60px -12px rgba(15, 23, 42, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.6) !important;
+}
+
+/* 5. Qidiruv va Kiritish Maydonlari (Inputs, Textarea, Select) */
+#app:not(:has(#login-card)) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+#app:not(:has(#login-card)) textarea,
+#app:not(:has(#login-card)) select {
+  background-color: rgba(255, 255, 255, 0.48) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.70) !important;
+  color: #0f172a !important;
+  font-weight: 500;
+  box-shadow: inset 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+}
+
+#app:not(:has(#login-card)) input:focus,
+#app:not(:has(#login-card)) textarea:focus,
+#app:not(:has(#login-card)) select:focus {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+  border-color: #4f46e5 !important;
+  box-shadow: 0 0 0 3.5px rgba(79, 70, 229, 0.16) !important;
+}
+
+/* 6. Yordamchi fonlar (bg-slate-50, bg-slate-100, filtr tablari) */
+#app .bg-slate-50,
+#app .bg-slate-100 {
+  background-color: var(--ios-glass-subtle-bg) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-color: rgba(255, 255, 255, 0.50) !important;
+}
+
+/* 7. Tugmalar (iOS Action Buttons) */
+#app button.bg-white,
+#app button.bg-slate-50,
+#app button.bg-slate-100 {
+  background-color: rgba(255, 255, 255, 0.48) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+#app button.bg-white:hover,
+#app button.bg-slate-50:hover,
+#app button.bg-slate-100:hover {
+  background-color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: 0 4px 12px -1px rgba(15, 23, 42, 0.12);
+}
+
+/* 8. Jadvallar (Tables) */
+#app table {
+  background-color: transparent !important;
+}
+
+#app thead {
+  background-color: rgba(255, 255, 255, 0.60) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+}
+
+#app thead th {
+  color: #334155 !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
+}
+
+#app tbody tr {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6) !important;
+}
+
+#app tbody tr:hover {
+  background-color: rgba(238, 242, 255, 0.75) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* 9. Matnlarning O'qilishini (Legibility & Contrast) Kafolatlash */
+#app:not(:has(#login-card)) h1, 
+#app:not(:has(#login-card)) h2, 
+#app:not(:has(#login-card)) h3, 
+#app:not(:has(#login-card)) h4, 
+#app:not(:has(#login-card)) h5, 
+#app:not(:has(#login-card)) h6 {
+  color: #0f172a !important;
+  letter-spacing: -0.015em;
+}
+
+#app:not(:has(#login-card)) p, 
+#app:not(:has(#login-card)) span, 
+#app:not(:has(#login-card)) label, 
+#app:not(:has(#login-card)) td {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Quyi yozuvlar va kichik detallar uchun to'q kulrang va yuqori kontrast */
+#app:not(:has(#login-card)) .text-slate-400 {
+  color: #475569 !important;
+}
+
+#app:not(:has(#login-card)) .text-slate-500 {
+  color: #334155 !important;
+}
+
+#app:not(:has(#login-card)) .text-slate-600 {
+  color: #1e293b !important;
+}
+
+/* =========================================================
+   LOGIN SAHIFASI UCHUN MAXSUS PRO ANIMATSIYALAR
+   ========================================================= */
+
+/* Shaffof shisha orqa fonida mayin yulduz/nur chaqnashi */
+@keyframes loginBtnGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-login-btn-gradient {
+  background-size: 200% 200% !important;
+  animation: loginBtnGradientShift 4s ease infinite;
+}
+
+/* Kirish tugmasi ustida oquvchi yorqin nur chizig'i (Shimmer Ray Effect) */
+@keyframes loginBtnRay {
+  0% {
+    left: -120%;
+  }
+  25%, 100% {
+    left: 150%;
+  }
+}
+
+.login-btn-ray {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-22deg);
+  animation: loginBtnRay 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+/* Kirish tugmasi nozik pulsatsiya va nur taratishi */
+@keyframes loginBtnPulseGlow {
+  0%, 100% {
+    box-shadow: 0 8px 24px -4px rgba(16, 185, 129, 0.45), 0 0 0 0 rgba(16, 185, 129, 0.35);
+  }
+  50% {
+    box-shadow: 0 12px 32px -2px rgba(6, 182, 212, 0.65), 0 0 16px 2px rgba(16, 185, 129, 0.4);
+  }
+}
+
+.login-btn-glow {
+  animation: loginBtnPulseGlow 3s ease-in-out infinite;
+}
+
+/* Rangli ko'rsatkichlar (Badges) yanada toza va o'qishli */
+#app .bg-blue-50 {
+  background-color: rgba(239, 246, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+
+#app .bg-emerald-50 {
+  background-color: rgba(236, 253, 245, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+
+#app .bg-purple-50 {
+  background-color: rgba(250, 245, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+
+#app .bg-amber-50 {
+  background-color: rgba(254, 252, 232, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+
+#app .bg-red-50 {
+  background-color: rgba(254, 242, 242, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+
+
+
+
