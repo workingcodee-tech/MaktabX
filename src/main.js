@@ -1867,7 +1867,36 @@ function handleResetSchoolPin(schoolId) {
 }
 
 // Asosiy ilovani ekranga chizish (Main render loop)
+function syncDynamicSeoTags() {
+  try {
+    const origin = window.location.origin;
+    const cleanUrl = origin + window.location.pathname;
+    const logoUrl = `${origin}/maktabx-logo.png`;
+
+    const canonicalEl = document.getElementById('canonical-link');
+    if (canonicalEl) canonicalEl.setAttribute('href', cleanUrl);
+
+    const ogUrlEl = document.getElementById('og-url-meta');
+    if (ogUrlEl) ogUrlEl.setAttribute('content', cleanUrl);
+
+    const ogImgEl = document.getElementById('og-image-meta');
+    if (ogImgEl) ogImgEl.setAttribute('content', logoUrl);
+
+    const twImgEl = document.getElementById('twitter-image-meta');
+    if (twImgEl) twImgEl.setAttribute('content', logoUrl);
+
+    const jsonLdEl = document.getElementById('maktabx-jsonld');
+    if (jsonLdEl && jsonLdEl.textContent) {
+      const defaultHost = 'https://ais-pre-gs4rr5pquvbx4k23icdb23-697446284775.asia-southeast1.run.app';
+      if (origin && origin !== defaultHost && jsonLdEl.textContent.includes(defaultHost)) {
+        jsonLdEl.textContent = jsonLdEl.textContent.split(defaultHost).join(origin);
+      }
+    }
+  } catch (_) {}
+}
+
 function renderApp(initialTab = null) {
+  syncDynamicSeoTags();
   const app = document.getElementById('app');
   if (!app) return;
 

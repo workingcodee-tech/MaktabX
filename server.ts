@@ -29,6 +29,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Serve /favicon.ico directly as MaktabX logo PNG for Google Search Favicon crawler
+app.get('/favicon.ico', (req, res) => {
+  const logoPath = path.join(process.cwd(), 'public', 'maktabx-logo.png');
+  if (fs.existsSync(logoPath)) {
+    res.type('image/png').sendFile(logoPath);
+  } else {
+    res.status(404).end();
+  }
+});
+
 // Dynamic robots.txt for Google Search Console & Crawlers
 app.get('/robots.txt', (req, res) => {
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';

@@ -10,6 +10,11 @@
   force = true
 
 [[redirects]]
+  from = "/favicon.ico"
+  to = "/maktabx-logo.png"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
