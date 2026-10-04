@@ -576,10 +576,10 @@
 
 /* 1. iOS Frosted Glass Kartalar va Asosiy Konteynerlar */
 .ios-glass-card,
-#app:not(:has(#login-card)) .bg-white:not(.no-glass):not(.badge-solid):not(#splash-logo-card *),
-#app:not(:has(#login-card)) .bg-white\/95,
-#app:not(:has(#login-card)) .bg-white\/90,
-#app:not(:has(#login-card)) .bg-white\/80 {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .bg-white:not(.no-glass):not(.badge-solid):not(#splash-logo-card *),
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .bg-white\/95,
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .bg-white\/90,
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .bg-white\/80 {
   background-color: var(--ios-glass-card-bg) !important;
   backdrop-filter: blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
   -webkit-backdrop-filter: blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
@@ -588,13 +588,13 @@
 }
 
 /* Hover qilinganda mayin yorishish */
-#app:not(:has(#login-card)) .bg-white:hover,
-#app tr:hover {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .bg-white:hover,
+#app:not(:has(#landing-page-root)) tr:hover {
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* 2. Yuqori Navigatsiya / Header (iOS Nav Bar) */
-#app header,
+#app:not(:has(#landing-page-root)) header,
 .ios-glass-header {
   background-color: rgba(255, 255, 255, 0.58) !important;
   backdrop-filter: blur(28px) saturate(190%) !important;
@@ -670,9 +670,9 @@
 }
 
 /* 5. Qidiruv va Kiritish Maydonlari (Inputs, Textarea, Select) */
-#app:not(:has(#login-card)) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-#app:not(:has(#login-card)) textarea,
-#app:not(:has(#login-card)) select {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) textarea,
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) select {
   background-color: rgba(255, 255, 255, 0.48) !important;
   backdrop-filter: blur(18px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
@@ -682,17 +682,17 @@
   box-shadow: inset 0 1px 2px 0 rgba(15, 23, 42, 0.05);
 }
 
-#app:not(:has(#login-card)) input:focus,
-#app:not(:has(#login-card)) textarea:focus,
-#app:not(:has(#login-card)) select:focus {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) input:focus,
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) textarea:focus,
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) select:focus {
   background-color: rgba(255, 255, 255, 0.82) !important;
   border-color: #4f46e5 !important;
   box-shadow: 0 0 0 3.5px rgba(79, 70, 229, 0.16) !important;
 }
 
 /* 6. Yordamchi fonlar (bg-slate-50, bg-slate-100, filtr tablari) */
-#app .bg-slate-50,
-#app .bg-slate-100 {
+#app:not(:has(#landing-page-root)) .bg-slate-50,
+#app:not(:has(#landing-page-root)) .bg-slate-100 {
   background-color: var(--ios-glass-subtle-bg) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -700,9 +700,9 @@
 }
 
 /* 7. Tugmalar (iOS Action Buttons) */
-#app button.bg-white,
-#app button.bg-slate-50,
-#app button.bg-slate-100 {
+#app:not(:has(#landing-page-root)) button.bg-white,
+#app:not(:has(#landing-page-root)) button.bg-slate-50,
+#app:not(:has(#landing-page-root)) button.bg-slate-100 {
   background-color: rgba(255, 255, 255, 0.48) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
@@ -710,9 +710,9 @@
   box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
 }
 
-#app button.bg-white:hover,
-#app button.bg-slate-50:hover,
-#app button.bg-slate-100:hover {
+#app:not(:has(#landing-page-root)) button.bg-white:hover,
+#app:not(:has(#landing-page-root)) button.bg-slate-50:hover,
+#app:not(:has(#landing-page-root)) button.bg-slate-100:hover {
   background-color: rgba(255, 255, 255, 0.72) !important;
   box-shadow: 0 4px 12px -1px rgba(15, 23, 42, 0.12);
 }
@@ -745,34 +745,73 @@
 }
 
 /* 9. Matnlarning O'qilishini (Legibility & Contrast) Kafolatlash */
-#app:not(:has(#login-card)) h1, 
-#app:not(:has(#login-card)) h2, 
-#app:not(:has(#login-card)) h3, 
-#app:not(:has(#login-card)) h4, 
-#app:not(:has(#login-card)) h5, 
-#app:not(:has(#login-card)) h6 {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h1, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h2, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h3, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h4, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h5, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) h6 {
   color: #0f172a !important;
   letter-spacing: -0.015em;
 }
 
-#app:not(:has(#login-card)) p, 
-#app:not(:has(#login-card)) span, 
-#app:not(:has(#login-card)) label, 
-#app:not(:has(#login-card)) td {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) p, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) span, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) label, 
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) td {
   -webkit-font-smoothing: antialiased;
 }
 
 /* Quyi yozuvlar va kichik detallar uchun to'q kulrang va yuqori kontrast */
-#app:not(:has(#login-card)) .text-slate-400 {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .text-slate-400 {
   color: #475569 !important;
 }
 
-#app:not(:has(#login-card)) .text-slate-500 {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .text-slate-500 {
   color: #334155 !important;
 }
 
-#app:not(:has(#login-card)) .text-slate-600 {
+#app:not(:has(#login-card)):not(:has(#landing-page-root)) .text-slate-600 {
   color: #1e293b !important;
+}
+
+/* =========================================================
+   LANDING PAGE MAXSUS ANIMATSIYALARI VA KARTALARI
+   ========================================================= */
+@keyframes landingCardRise {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-landing-card {
+  animation: landingCardRise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 4.5s ease-in-out infinite;
+}
+
+.landing-hover-lift {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease;
+}
+
+.landing-hover-lift:hover {
+  transform: translateY(-4px);
 }
 
 /* =========================================================
