@@ -29,6 +29,48 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Dynamic robots.txt for Google Search Console & Crawlers
+app.get('/robots.txt', (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host') || 'ais-pre-gs4rr5pquvbx4k23icdb23-697446284775.asia-southeast1.run.app';
+  const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+  res.type('text/plain').send(
+`User-agent: *
+Allow: /
+Allow: /maktabx-logo.png
+Allow: /maktabx-logo.jpg
+Allow: /working-code-logo.svg
+
+Sitemap: ${baseUrl.replace(/\/$/, '')}/sitemap.xml
+`
+  );
+});
+
+// Dynamic sitemap.xml with Image Sitemap for MaktabX Logo in Google Search
+app.get('/sitemap.xml', (req, res) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host') || 'ais-pre-gs4rr5pquvbx4k23icdb23-697446284775.asia-southeast1.run.app';
+  const baseUrl = (process.env.APP_URL || `${proto}://${host}`).replace(/\/$/, '');
+  const today = new Date().toISOString().split('T')[0];
+  res.type('application/xml').send(
+`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>${baseUrl}/maktabx-logo.png</image:loc>
+      <image:title>MaktabX - Ta'lim va O'quvchilar Boshqaruv Tizimi Rasmiy Logotipi</image:title>
+      <image:caption>MaktabX rasmiy logotipi (WORKING CODE)</image:caption>
+    </image:image>
+  </url>
+</urlset>`
+  );
+});
+
 // DevSMS Gateway GET test endpoint
 app.get('/api/sms/send', (req, res) => {
   res.json({ status: 'ok', service: 'DevSMS Gateway', timestamp: new Date().toISOString() });

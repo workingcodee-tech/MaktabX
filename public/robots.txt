@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Allow: /maktabx-logo.png
+Allow: /maktabx-logo.jpg
+Allow: /working-code-logo.svg
+
+Sitemap: https://ais-pre-gs4rr5pquvbx4k23icdb23-697446284775.asia-southeast1.run.app/sitemap.xml
