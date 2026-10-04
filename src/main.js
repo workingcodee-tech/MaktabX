@@ -5,6 +5,7 @@
  */
 
 import { loadData, saveData, resetData, getClassPlatforms } from './data.js';
+import { renderLanding } from './views/landingView.js';
 import { renderLogin } from './views/loginView.js';
 import { renderDeveloper } from './views/developerView.js';
 import { renderAdmin } from './views/adminView.js';
@@ -159,7 +160,7 @@ const initialSession = getStoredSession(initialDb);
 let state = {
   db: initialDb,
   currentUser: initialSession, // { role: 'developer' | 'admin' | 'teacher', data: ... } yoki null
-  currentView: initialSession ? 'dashboard' : 'login', // Agar avval kirilgan bo'lsa darhol dashboard ochiladi
+  currentView: initialSession ? 'dashboard' : 'landing', // Saytga kirganda to'liq ma'lumot va qo'llanmaga ega Bosh sahifa kutib oladi
   isAppLocked: Boolean(initialSession?.data?.pinCode), // Har safar o'z profiliga kirganda PIN-kod so'raladi
   isSystemTerminalOpen: false, // Tizim boshqaruvi terminali holati
   selectedStudentId: null,
@@ -449,7 +450,7 @@ function executeLogout() {
   clearUserSession();
   state.currentUser = null;
   state.isAppLocked = false;
-  state.currentView = 'login';
+  state.currentView = 'landing';
   state.selectedStudentId = null;
   state.selectedAdminSchoolId = null;
   state.selectedTeacherClassId = null;
@@ -1947,7 +1948,8 @@ function renderApp(initialTab = null) {
     return;
   }
 
-  if (state.currentView === 'login' || !state.currentUser) {
+  if (!state.currentUser || state.currentView === 'landing' || state.currentView === 'login') {
+    const prevScroll = document.getElementById('main-content')?.scrollTop || 0;
     app.innerHTML = `
       <div class="flex h-screen w-full bg-transparent font-sans overflow-hidden text-slate-800">
         <main id="main-content" class="flex-1 overflow-y-auto">
@@ -1956,24 +1958,59 @@ function renderApp(initialTab = null) {
       </div>
     `;
     const viewContainer = document.getElementById('view-container');
-    renderLogin(viewContainer, {
-      siteInfo: state.db.siteInfo,
-      developer: state.db.developer,
-      onLogin: handleLogin,
-      onOpenAbout: openAboutModal,
-      onOpenSystemTerminal: () => {
-        state.isSystemTerminalOpen = true;
-        renderApp();
-      },
-      onForgotPassword: (initialId = '') => {
-        showRecoveryModal({
-          state: state.db,
-          showToast,
-          initialId: typeof initialId === 'string' ? initialId : '',
-          onAutoLogin: handleTeacherIdAutoLogin
-        });
+    const mainEl = document.getElementById('main-content');
+
+    if (state.currentView === 'login') {
+      renderLogin(viewContainer, {
+        siteInfo: state.db.siteInfo,
+        developer: state.db.developer,
+        onLogin: handleLogin,
+        onOpenAbout: openAboutModal,
+        onBackToLanding: () => {
+          state.currentView = 'landing';
+          renderApp();
+          const m = document.getElementById('main-content');
+          if (m) m.scrollTop = 0;
+        },
+        onOpenSystemTerminal: () => {
+          state.isSystemTerminalOpen = true;
+          renderApp();
+        },
+        onForgotPassword: (initialId = '') => {
+          showRecoveryModal({
+            state: state.db,
+            showToast,
+            initialId: typeof initialId === 'string' ? initialId : '',
+            onAutoLogin: handleTeacherIdAutoLogin
+          });
+        }
+      });
+    } else {
+      renderLanding(viewContainer, {
+        siteInfo: state.db.siteInfo,
+        developer: state.db.developer,
+        db: state.db,
+        showToast,
+        onGoToLogin: () => {
+          state.currentView = 'login';
+          renderApp();
+          const m = document.getElementById('main-content');
+          if (m) m.scrollTop = 0;
+        },
+        onOpenAbout: openAboutModal,
+        onForgotPassword: (initialId = '') => {
+          showRecoveryModal({
+            state: state.db,
+            showToast,
+            initialId: typeof initialId === 'string' ? initialId : '',
+            onAutoLogin: handleTeacherIdAutoLogin
+          });
+        }
+      });
+      if (mainEl && prevScroll > 0) {
+        mainEl.scrollTop = prevScroll;
       }
-    });
+    }
     return;
   }
 

@@ -7,13 +7,27 @@
  * - Face ID login sahifasidan butunlay olib tashlangan
  */
 
-export function renderLogin(container, { onLogin, onOpenAbout, onForgotPassword, onOpenSystemTerminal, siteInfo, developer }) {
+export function renderLogin(container, { onLogin, onOpenAbout, onForgotPassword, onOpenSystemTerminal, onBackToLanding, siteInfo, developer }) {
   const currentTitle = siteInfo?.title || 'MaktabX';
   const currentSubtitle = siteInfo?.subtitle || "Ta'lim va O'quvchilar Boshqaruv Tizimi";
   const devName = developer?.brand || developer?.name || "WORKING CODE";
 
   container.innerHTML = `
-    <div class="min-h-[100dvh] w-full flex items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden select-none bg-gradient-to-br from-[#06181b] via-[#0b292e] to-[#071d22]">
+    <div class="min-h-[100dvh] w-full flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden select-none bg-gradient-to-br from-[#06181b] via-[#0b292e] to-[#071d22]">
+      
+      <!-- Bosh sahifaga (Qo'llanmaga) qaytish tugmasi -->
+      <div class="w-full max-w-[430px] mb-3 relative z-20 flex items-center justify-between">
+        <button 
+          type="button" 
+          id="login-back-landing-btn"
+          class="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 text-xs font-bold text-white transition-all active:scale-95 cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          </svg>
+          <span>Bosh sahifa va Qo'llanma</span>
+        </button>
+      </div>
       
       <!-- ========================================================================= -->
       <!-- 1. ORQA FON: TO'LQINLAR VA AMBIENT NUR EFFEKTLARI                        -->
@@ -248,6 +262,12 @@ export function renderLogin(container, { onLogin, onOpenAbout, onForgotPassword,
   // 3. EVENT LISTENERLAR
   // =========================================================================
   
+  // Bosh sahifaga (Landing) qaytish
+  const backLandingBtn = container.querySelector('#login-back-landing-btn');
+  if (backLandingBtn && onBackToLanding) {
+    backLandingBtn.onclick = onBackToLanding;
+  }
+
   // Sayt haqida modali
   const aboutBtn = container.querySelector('#login-about-btn');
   if (aboutBtn && onOpenAbout) {
