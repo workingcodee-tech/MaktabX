@@ -774,12 +774,40 @@ export function validateDutyAssignment({ dayOfWeek, primaryClass, backupClass, s
 }
 
 /**
+ * Hisoblash: O'quv yili yoki kalendar haftasidan kelib chiqib joriy sikl haftasini aniqlash.
+ * Masalan, 24 nafar o'qituvchi bo'lsa, har haftada 6 nafardan 4 haftalik to'liq sikl bo'ladi.
+ * 1-hafta -> 2-hafta -> 3-hafta -> 4-hafta -> 1-hafta (uzluksiz adolatli aylanish).
+ */
+export function getCycleWeekForDate(dateStr, totalCycleWeeks = 1) {
+  if (!totalCycleWeeks || totalCycleWeeks <= 1) return 1;
+  try {
+    const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+    const year = d.getFullYear();
+    // O'quv yili sentabrdan boshlanadi: agar oy < 8 (yan-avg), demak oldingi yil sentabrdan
+    const academicStartYear = d.getMonth() < 8 ? year - 1 : year;
+    const academicStart = new Date(academicStartYear, 8, 1); // 1-sentabr
+    const startDay = academicStart.getDay();
+    const mondayOffset = startDay === 0 ? -6 : 1 - startDay;
+    const firstMonday = new Date(academicStart);
+    firstMonday.setDate(academicStart.getDate() + mondayOffset);
+
+    const diffMs = d.getTime() - firstMonday.getTime();
+    const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+    const safeWeeks = diffWeeks >= 0 ? diffWeeks : 0;
+    return (safeWeeks % totalCycleWeeks) + 1;
+  } catch (_) {
+    return 1;
+  }
+}
+
+/**
  * Guruhlar (smenalar) bo'yicha o'qituvchilarni tartib bilan avtomatik navbatchi qilib tayinlash
  * Qoidalar:
  * - Smenalarga (guruhlarga) kiritilmagan o'qituvchilar umuman navbatchi etib tayinlanmaydi (mustasno).
  * - 1-sinfdan 5-sinfgacha bo'lgan sinf rahbarlari Shanba kuni navbatchi etib tayinlanmaydi (Shanba kuni boshlang'ichga dars yo'q).
  * - Bitta o'qituvchi 2 kun ketma-ket navbatchi bo'lmaydi.
  * - Barcha sinf rahbarlari adolatli, navbat bilan teng taqsimlanadi (hech kim yiroqda qolmaydi).
+ * - Barcha o'qituvchilar qamrab olinishi uchun to'liq sikl haftalari (1-hafta, 2-hafta...) bo'yicha to'liq jadval tuziladi.
  */
 export function generateOrderlyDutyRosters(schoolId, shifts = [], classes = []) {
   if (!schoolId || !Array.isArray(shifts) || shifts.length === 0) return [];
@@ -800,11 +828,9 @@ export function generateOrderlyDutyRosters(schoolId, shifts = [], classes = []) 
     }));
 
   const generatedRosters = [];
-
-  // Barcha guruhlarga kiritilgan 6-11 sinf (Shanba kela oladigan) o'qituvchilari
   const schoolUpperTeachers = allAssignedTeachers.filter(t => !t.isLowerGrade);
 
-  shifts.forEach((shift, shiftIndex) => {
+  shifts.forEach((shift) => {
     const assignedClassIds = new Set(shift.classIds || []);
     let shiftTeachers = classes
       .filter(c => assignedClassIds.has(c.id) && Boolean(c.teacherName && c.teacherName.trim()))
@@ -827,166 +853,175 @@ export function generateOrderlyDutyRosters(schoolId, shifts = [], classes = []) 
     // Smenadagi Shanba kela oladigan o'qituvchilar (6-11 sinf)
     let shiftUpperTeachers = shiftTeachers.filter(t => !t.isLowerGrade);
     if (shiftUpperTeachers.length === 0) {
-      // Agar smena faqat 1-5 sinflardan iborat bo'lsa, faqat boshqa smenalarga kiritilgan 6-11 sinf rahbarlaridan olinadi
       shiftUpperTeachers = schoolUpperTeachers.length > 0 ? schoolUpperTeachers : shiftTeachers;
     }
 
-    // Har bir o'qituvchining necha marta asosiy va zaxira navbatchi bo'lganligini kuzatish (Fair distribution)
-    const primaryUsage = new Map();
-    const backupUsage = new Map();
-    shiftTeachers.forEach(t => {
-      const key = t.classId || t.name;
-      primaryUsage.set(key, 0);
-      backupUsage.set(key, 0);
-    });
-    shiftUpperTeachers.forEach(t => {
-      const key = t.classId || t.name;
-      if (!primaryUsage.has(key)) {
-        primaryUsage.set(key, 0);
-        backupUsage.set(key, 0);
-      }
-    });
+    const totalTeachers = shiftTeachers.length;
+    // Barcha o'qituvchilar navbat bilan qamrab olinishi uchun to'liq haftalar soni
+    // Har haftada 5 yoki 6 nafar o'qituvchi qamrab olinadi, shuning uchun totalTeachers <= 6 bo'lsa 1, aks holda Math.ceil(totalTeachers / 5)
+    const totalCycleWeeks = totalTeachers <= 6 ? 1 : Math.max(1, Math.ceil(totalTeachers / 5));
 
-    // 1-bosqich: Shanba (kun 6) - qat'iy ravishda 6-11 sinf o'qituvchilaridan tanlanadi!
-    const satPrimaryCandidates = shiftUpperTeachers.slice().sort((a, b) => {
-      const uA = primaryUsage.get(a.classId || a.name) || 0;
-      const uB = primaryUsage.get(b.classId || b.name) || 0;
-      if (uA !== uB) return uA - uB;
-      return compareClassNames(a.className, b.className);
-    });
-    const satPrimary = satPrimaryCandidates[shiftIndex % satPrimaryCandidates.length] || satPrimaryCandidates[0];
-    primaryUsage.set(satPrimary.classId || satPrimary.name, (primaryUsage.get(satPrimary.classId || satPrimary.name) || 0) + 1);
+    let mainQueueIdx = 0;
+    let upperSatIdx = 0;
 
-    const satBackupCandidates = shiftUpperTeachers
-      .filter(t => (t.classId || t.name) !== (satPrimary.classId || satPrimary.name))
-      .sort((a, b) => {
-        const uA = backupUsage.get(a.classId || a.name) || 0;
-        const uB = backupUsage.get(b.classId || b.name) || 0;
-        if (uA !== uB) return uA - uB;
-        return compareClassNames(a.className, b.className);
-      });
-    const satBackup = satBackupCandidates.length > 0 ? satBackupCandidates[0] : satPrimary;
-    backupUsage.set(satBackup.classId || satBackup.name, (backupUsage.get(satBackup.classId || satBackup.name) || 0) + 1);
+    for (let w = 1; w <= totalCycleWeeks; w++) {
+      // 1-bosqich: Dushanbadan Jumagacha (kun 1 dan 5 gacha) ketma-ket adolatli taqsimlash
+      for (let dayId = 1; dayId <= 5; dayId++) {
+        const primary = shiftTeachers[mainQueueIdx % totalTeachers] || shiftTeachers[0];
+        mainQueueIdx++;
 
-    // 2-bosqich: Dushanbadan Jumagacha (kun 1 dan 5 gacha) taqsimlash
-    // Ketma-ket 2 kun bir xil bo'lmasligi va barcha o'qituvchilar teng qatnashishi kafolatlanadi
-    const weekdayAssignments = [];
+        // Zaxira: navbat zanjiridagi keyingi o'qituvchi
+        const backup = (totalTeachers > 1)
+          ? (shiftTeachers[mainQueueIdx % totalTeachers] || shiftTeachers[0])
+          : primary;
 
-    for (let dayId = 1; dayId <= 5; dayId++) {
-      const prevDayAssigned = weekdayAssignments[dayId - 2]?.primary;
-      const prevKey = prevDayAssigned ? (prevDayAssigned.classId || prevDayAssigned.name) : null;
-      
-      // Juma (kun 5) bo'lsa, Shanba (satPrimary) bilan ketma-ket bo'lmasligi kerak
-      const nextForbiddenKey = (dayId === 5) ? (satPrimary.classId || satPrimary.name) : null;
-
-      let candidates = shiftTeachers.filter(t => {
-        const key = t.classId || t.name;
-        if (shiftTeachers.length > 1 && key === prevKey) return false;
-        if (shiftTeachers.length > 2 && key === nextForbiddenKey) return false;
-        return true;
-      });
-
-      if (candidates.length === 0) {
-        candidates = shiftTeachers.filter(t => {
-          const key = t.classId || t.name;
-          return shiftTeachers.length > 1 ? key !== prevKey : true;
+        generatedRosters.push({
+          id: `roster_${schoolId}_${shift.id}_w${w}_day${dayId}`,
+          schoolId,
+          shiftId: shift.id,
+          weekNumber: w,
+          totalWeeks: totalCycleWeeks,
+          dayOfWeek: dayId,
+          primaryTeacherName: primary.name,
+          primaryTeacherPhone: primary.phone,
+          primaryTeacherClassId: primary.classId,
+          primaryTeacherClassName: primary.className,
+          backupTeacherName: backup.name,
+          backupTeacherPhone: backup.phone,
+          backupTeacherClassId: backup.classId,
+          backupTeacherClassName: backup.className,
+          notes: `${w}-hafta ${getDayName(dayId)} navbatchisi (${shift.name})`,
+          updatedAt: new Date().toISOString()
         });
+
+        // 1-hafta uchun orqaga moslik (legacy id bilan)
+        if (w === 1) {
+          generatedRosters.push({
+            id: `roster_${schoolId}_${shift.id}_day${dayId}`,
+            schoolId,
+            shiftId: shift.id,
+            weekNumber: 1,
+            totalWeeks: totalCycleWeeks,
+            dayOfWeek: dayId,
+            primaryTeacherName: primary.name,
+            primaryTeacherPhone: primary.phone,
+            primaryTeacherClassId: primary.classId,
+            primaryTeacherClassName: primary.className,
+            backupTeacherName: backup.name,
+            backupTeacherPhone: backup.phone,
+            backupTeacherClassId: backup.classId,
+            backupTeacherClassName: backup.className,
+            notes: `1-hafta ${getDayName(dayId)} navbatchisi (${shift.name})`,
+            updatedAt: new Date().toISOString()
+          });
+        }
       }
-      if (candidates.length === 0) {
-        candidates = shiftTeachers;
+
+      // 2-bosqich: Shanba (kun 6)
+      // Navbatdagi o'qituvchi tekshiriladi: agar 6-11 sinf bo'lsa, u navbatini oladi va asosiy navbat suriladi.
+      // Agar 1-5 sinf bo'lsa, 1-5 sinf shanbaga qo'yilmaydi; shanba yuqori sinflardan rotatsiya bilan olinadi,
+      // LEKIN mainQueueIdx surilmaydi - natijada boshlang'ich sinf navbati dushanbaga o'tadi va hech kim qolib ketmaydi!
+      const candidate = shiftTeachers[mainQueueIdx % totalTeachers] || shiftTeachers[0];
+      let satPrimary;
+      let satBackup;
+
+      if (candidate && !candidate.isLowerGrade) {
+        satPrimary = candidate;
+        mainQueueIdx++;
+        satBackup = (totalTeachers > 1) 
+          ? (shiftTeachers[mainQueueIdx % totalTeachers] || shiftTeachers[0]) 
+          : satPrimary;
+      } else {
+        satPrimary = shiftUpperTeachers[upperSatIdx % shiftUpperTeachers.length] || shiftUpperTeachers[0];
+        upperSatIdx++;
+        const nextSatIdx = upperSatIdx % shiftUpperTeachers.length;
+        satBackup = shiftUpperTeachers.length > 1 
+          ? (shiftUpperTeachers[nextSatIdx] || satPrimary) 
+          : satPrimary;
+        // mainQueueIdx surilmaydi! candidate dushanba kuni (keyingi haftaning birinchi ish kunida) 1-o'rinda navbatchilik oladi!
       }
 
-      candidates.sort((a, b) => {
-        const uA = primaryUsage.get(a.classId || a.name) || 0;
-        const uB = primaryUsage.get(b.classId || b.name) || 0;
-        if (uA !== uB) return uA - uB;
-        // Agar bir xil bo'lsa, 1-5 sinf egalariga hafta ichida ustunlik (chunki Shanba ular uchun yopiq)
-        if (a.isLowerGrade && !b.isLowerGrade) return -1;
-        if (!a.isLowerGrade && b.isLowerGrade) return 1;
-        return compareClassNames(a.className, b.className);
-      });
-
-      const chosenPrimary = candidates[0];
-      const chosenKey = chosenPrimary.classId || chosenPrimary.name;
-      primaryUsage.set(chosenKey, (primaryUsage.get(chosenKey) || 0) + 1);
-
-      // Zaxira o'qituvchini tanlash (Asosiy bilan bir xil bo'lmasin, backupUsage kam bo'lsin)
-      let backupCandidates = shiftTeachers.filter(t => (t.classId || t.name) !== chosenKey);
-      if (backupCandidates.length === 0) backupCandidates = shiftTeachers;
-
-      backupCandidates.sort((a, b) => {
-        const uA = backupUsage.get(a.classId || a.name) || 0;
-        const uB = backupUsage.get(b.classId || b.name) || 0;
-        if (uA !== uB) return uA - uB;
-        return compareClassNames(a.className, b.className);
-      });
-
-      const chosenBackup = backupCandidates[0];
-      const backupKey = chosenBackup.classId || chosenBackup.name;
-      backupUsage.set(backupKey, (backupUsage.get(backupKey) || 0) + 1);
-
-      weekdayAssignments.push({
-        dayId,
-        primary: chosenPrimary,
-        backup: chosenBackup
-      });
-    }
-
-    // 1-5 kunlarni qo'shish
-    weekdayAssignments.forEach(({ dayId, primary, backup }) => {
       generatedRosters.push({
-        id: `roster_${schoolId}_${shift.id}_day${dayId}`,
+        id: `roster_${schoolId}_${shift.id}_w${w}_day6`,
         schoolId,
         shiftId: shift.id,
-        dayOfWeek: dayId,
-        primaryTeacherName: primary?.name || "Navbatchi o'qituvchi",
-        primaryTeacherPhone: primary?.phone || "",
-        primaryTeacherClassId: primary?.classId || "",
-        primaryTeacherClassName: primary?.className || "",
-        backupTeacherName: backup?.name || "Zaxira o'qituvchi",
-        backupTeacherPhone: backup?.phone || "",
-        backupTeacherClassId: backup?.classId || "",
-        backupTeacherClassName: backup?.className || "",
-        notes: `Tizim tomonidan adolatli tartibda ${shift.name} uchun tayinlangan`,
+        weekNumber: w,
+        totalWeeks: totalCycleWeeks,
+        dayOfWeek: 6,
+        primaryTeacherName: satPrimary.name,
+        primaryTeacherPhone: satPrimary.phone,
+        primaryTeacherClassId: satPrimary.classId,
+        primaryTeacherClassName: satPrimary.className,
+        backupTeacherName: satBackup.name,
+        backupTeacherPhone: satBackup.phone,
+        backupTeacherClassId: satBackup.classId,
+        backupTeacherClassName: satBackup.className,
+        notes: `${w}-hafta Shanba navbatchisi (6-11 sinflar bo'yicha rotatsiya)`,
         updatedAt: new Date().toISOString()
       });
-    });
 
-    // 6-kun: Shanba
-    generatedRosters.push({
-      id: `roster_${schoolId}_${shift.id}_day6`,
-      schoolId,
-      shiftId: shift.id,
-      dayOfWeek: 6,
-      primaryTeacherName: satPrimary?.name || "Navbatchi o'qituvchi",
-      primaryTeacherPhone: satPrimary?.phone || "",
-      primaryTeacherClassId: satPrimary?.classId || "",
-      primaryTeacherClassName: satPrimary?.className || "",
-      backupTeacherName: satBackup?.name || "Zaxira o'qituvchi",
-      backupTeacherPhone: satBackup?.phone || "",
-      backupTeacherClassId: satBackup?.classId || "",
-      backupTeacherClassName: satBackup?.className || "",
-      notes: "Shanba navbatchisi (Boshlang'ich 1-5 sinflarga dars yo'qligi sababli 6-11 sinf mas'uli)",
-      updatedAt: new Date().toISOString()
-    });
+      if (w === 1) {
+        generatedRosters.push({
+          id: `roster_${schoolId}_${shift.id}_day6`,
+          schoolId,
+          shiftId: shift.id,
+          weekNumber: 1,
+          totalWeeks: totalCycleWeeks,
+          dayOfWeek: 6,
+          primaryTeacherName: satPrimary.name,
+          primaryTeacherPhone: satPrimary.phone,
+          primaryTeacherClassId: satPrimary.classId,
+          primaryTeacherClassName: satPrimary.className,
+          backupTeacherName: satBackup.name,
+          backupTeacherPhone: satBackup.phone,
+          backupTeacherClassId: satBackup.classId,
+          backupTeacherClassName: satBackup.className,
+          notes: "Shanba navbatchisi (6-11 sinflar bo'yicha rotatsiya)",
+          updatedAt: new Date().toISOString()
+        });
+      }
 
-    // 7-kun: Yakshanba (Dam olish kuni)
-    generatedRosters.push({
-      id: `roster_${schoolId}_${shift.id}_day7`,
-      schoolId,
-      shiftId: shift.id,
-      dayOfWeek: 7,
-      primaryTeacherName: "Dam olish kuni",
-      primaryTeacherPhone: "",
-      primaryTeacherClassId: "",
-      primaryTeacherClassName: "",
-      backupTeacherName: "-",
-      backupTeacherPhone: "",
-      backupTeacherClassId: "",
-      backupTeacherClassName: "",
-      notes: "Yakshanba — umumiy dam olish kuni",
-      updatedAt: new Date().toISOString()
-    });
+      // 3-bosqich: Yakshanba (kun 7) - Dam olish kuni
+      generatedRosters.push({
+        id: `roster_${schoolId}_${shift.id}_w${w}_day7`,
+        schoolId,
+        shiftId: shift.id,
+        weekNumber: w,
+        totalWeeks: totalCycleWeeks,
+        dayOfWeek: 7,
+        primaryTeacherName: "Dam olish kuni",
+        primaryTeacherPhone: "",
+        primaryTeacherClassId: "",
+        primaryTeacherClassName: "",
+        backupTeacherName: "-",
+        backupTeacherPhone: "",
+        backupTeacherClassId: "",
+        backupTeacherClassName: "",
+        notes: "Yakshanba — umumiy dam olish kuni",
+        updatedAt: new Date().toISOString()
+      });
+
+      if (w === 1) {
+        generatedRosters.push({
+          id: `roster_${schoolId}_${shift.id}_day7`,
+          schoolId,
+          shiftId: shift.id,
+          weekNumber: 1,
+          totalWeeks: totalCycleWeeks,
+          dayOfWeek: 7,
+          primaryTeacherName: "Dam olish kuni",
+          primaryTeacherPhone: "",
+          primaryTeacherClassId: "",
+          primaryTeacherClassName: "",
+          backupTeacherName: "-",
+          backupTeacherPhone: "",
+          backupTeacherClassId: "",
+          backupTeacherClassName: "",
+          notes: "Yakshanba — umumiy dam olish kuni",
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
   });
 
   return generatedRosters;
@@ -994,9 +1029,8 @@ export function generateOrderlyDutyRosters(schoolId, shifts = [], classes = []) 
 
 /**
  * Sinf rahbarining bo'lajak navbatchilik grafigini prognoz qilish
- * - Agar o'qituvchi birorta ham smenaga kiritilmagan bo'lsa: isExcluded = true (navbatchilikdan mustasno).
- * - Agar joriy hafta navbatchi bo'lsa: isThisWeek = true, kuni va smenasi ko'rsatiladi.
- * - Agar 1 haftalik joriy jadvalga kiritilmagan bo'lsa ham: kelgusi rotatsiyada qaysi kuni, qaysi sanada navbatchi bo'lishi aniq hisoblab beriladi!
+ * - Har bir o'qituvchining guruhi bo'yicha to'liq rotatsiya siklidagi o'rni aniq hisoblanadi.
+ * - Hozirgi kalendar haftasi qaysi sikl haftasiga to'g'ri kelishi va o'qituvchining navbati qaysi sanaga to'g'ri kelishi aniq prognoz qilinadi.
  */
 export function getTeacherDutyScheduleProjection(teacherClass, state) {
   if (!teacherClass || !teacherClass.schoolId || !state) {
@@ -1033,35 +1067,70 @@ export function getTeacherDutyScheduleProjection(teacherClass, state) {
       isLowerGrade: isGrade1to5(c.name)
     }));
 
+  const totalTeachers = shiftTeachers.length;
+  const totalWeeks = totalTeachers <= 6 ? 1 : Math.max(1, Math.ceil(totalTeachers / 5));
+  const todayISO = getTodayISODate();
+  const todayDay = getTodayDayOfWeek();
+  const currentCycleWeek = getCycleWeekForDate(todayISO, totalWeeks);
+
+  // Butun sikl bo'yicha aniq jadvallarni olamiz
+  const generatedShiftRosters = generateOrderlyDutyRosters(schoolId, [shift], classes);
+  const savedShiftRosters = rosters.filter(r => r.shiftId === shift.id && r.weekNumber);
+  const activeRosters = savedShiftRosters.length > 0 ? savedShiftRosters : generatedShiftRosters;
+
+  // Ushbu o'qituvchiga tegishli asosiy navbatchilik kunlari
+  const myPrimaryRosters = activeRosters.filter(r => 
+    Number(r.dayOfWeek) >= 1 && Number(r.dayOfWeek) <= 6 &&
+    ((r.primaryTeacherClassId && r.primaryTeacherClassId === teacherClass.id) ||
+     (cleanTeacherName && (r.primaryTeacherName || '').trim().toLowerCase() === cleanTeacherName))
+  );
+
   const myIndex = shiftTeachers.findIndex(t => 
     t.id === teacherClass.id || 
     (cleanTeacherName && t.name.toLowerCase() === cleanTeacherName)
   );
 
-  // 3. Joriy haftalik jadvalda (1-6 kunlar) bormi?
-  const shiftRosters = rosters.filter(r => r.shiftId === shift.id && Number(r.dayOfWeek) <= 6);
-  
-  const myPrimaryRoster = shiftRosters.find(r => 
-    (r.primaryTeacherClassId && r.primaryTeacherClassId === teacherClass.id) ||
-    (cleanTeacherName && (r.primaryTeacherName || '').trim().toLowerCase() === cleanTeacherName)
-  );
+  let myCycleWeek = 1;
+  let myDayOfWeek = 1;
 
-  const myBackupRosters = shiftRosters.filter(r => 
-    (r.backupTeacherClassId && r.backupTeacherClassId === teacherClass.id) ||
-    (cleanTeacherName && (r.backupTeacherName || '').trim().toLowerCase() === cleanTeacherName)
-  );
+  if (myPrimaryRosters.length > 0) {
+    // Eng yaqin keladigan navbatchilik haftasini aniqlash
+    const sorted = [...myPrimaryRosters].sort((a, b) => {
+      const wA = Number(a.weekNumber || 1);
+      const wB = Number(b.weekNumber || 1);
+      const dA = Number(a.dayOfWeek || 1);
+      const dB = Number(b.dayOfWeek || 1);
+      const diffDaysA = ((wA >= currentCycleWeek ? (wA - currentCycleWeek) : (wA + totalWeeks - currentCycleWeek)) * 7) + (dA - todayDay);
+      const diffDaysB = ((wB >= currentCycleWeek ? (wB - currentCycleWeek) : (wB + totalWeeks - currentCycleWeek)) * 7) + (dB - todayDay);
+      const normA = diffDaysA < 0 ? diffDaysA + (totalWeeks * 7) : diffDaysA;
+      const normB = diffDaysB < 0 ? diffDaysB + (totalWeeks * 7) : diffDaysB;
+      return normA - normB;
+    });
+    myCycleWeek = Number(sorted[0].weekNumber || 1);
+    myDayOfWeek = Number(sorted[0].dayOfWeek || 1);
+  } else {
+    if (myIndex >= 0) {
+      myCycleWeek = (Math.floor(myIndex / 5) % totalWeeks) + 1;
+      myDayOfWeek = (myIndex % 5) + 1;
+    }
+  }
 
-  const todayDay = getTodayDayOfWeek();
+  const isThisWeek = (myCycleWeek === currentCycleWeek);
+  const isToday = isThisWeek && (myDayOfWeek === todayDay);
 
   // Barcha guruh o'qituvchilarining navbat zanjiri (Ketma-ketlik va rotatsiya)
   const allGroupTeachersQueue = shiftTeachers.map((t, idx) => {
-    let weekNum = Math.floor(idx / 6) + 1;
-    let dayNum = (idx % 6) + 1;
-    if (t.isLowerGrade && dayNum === 6) {
-      dayNum = 1;
-      weekNum += 1;
-    }
+    const tClean = (t.name || '').trim().toLowerCase();
+    const tRoster = activeRosters.find(r => 
+      Number(r.dayOfWeek) >= 1 && Number(r.dayOfWeek) <= 6 &&
+      ((r.primaryTeacherClassId && r.primaryTeacherClassId === t.id) ||
+       (tClean && (r.primaryTeacherName || '').trim().toLowerCase() === tClean))
+    );
+    const weekNum = tRoster ? Number(tRoster.weekNumber || 1) : ((Math.floor(idx / 5) % totalWeeks) + 1);
+    const dayNum = tRoster ? Number(tRoster.dayOfWeek || 1) : ((idx % 5) + 1);
     const dayObj = WEEK_DAYS.find(w => w.id === dayNum);
+    const isTeacherCurrentWeek = weekNum === currentCycleWeek;
+
     return {
       index: idx + 1,
       id: t.id,
@@ -1070,100 +1139,58 @@ export function getTeacherDutyScheduleProjection(teacherClass, state) {
       phone: t.phone,
       isLowerGrade: t.isLowerGrade,
       weekNumber: weekNum,
-      weekText: weekNum === 1 ? "1-hafta (Joriy hafta)" : `${weekNum}-hafta`,
+      weekText: isTeacherCurrentWeek ? `${weekNum}-hafta (Joriy hafta)` : `${weekNum}-hafta`,
       dayOfWeek: dayNum,
       dayName: dayObj?.name || `Kun ${dayNum}`,
+      isCurrentWeek: isTeacherCurrentWeek,
       isMe: t.id === teacherClass.id || (cleanTeacherName && t.name.toLowerCase() === cleanTeacherName)
     };
   });
 
-  const isBackupThisWeek = myBackupRosters.length > 0;
-  const backupDaysText = myBackupRosters.map(r => {
-    const w = WEEK_DAYS.find(d => d.id === Number(r.dayOfWeek));
-    return w ? w.name : `Kun ${r.dayOfWeek}`;
-  }).join(', ');
-
-  if (myPrimaryRoster) {
-    const day = WEEK_DAYS.find(w => w.id === Number(myPrimaryRoster.dayOfWeek));
-    return {
-      isExcluded: false,
-      isThisWeek: true,
-      role: 'primary',
-      dayOfWeek: Number(myPrimaryRoster.dayOfWeek),
-      dayName: day?.name || `Kun ${myPrimaryRoster.dayOfWeek}`,
-      isToday: Number(myPrimaryRoster.dayOfWeek) === Number(todayDay),
-      shiftId: shift.id,
-      shiftName: shift.name,
-      shiftHours: `${shift.startTime || '08:00'} - ${shift.endTime || '13:00'}`,
-      queuePosition: myIndex >= 0 ? myIndex + 1 : 1,
-      totalInGroup: shiftTeachers.length,
-      backupRosters: myBackupRosters,
-      isBackupThisWeek,
-      backupDaysText,
-      allGroupTeachersQueue
-    };
+  // Navbat kelish sanasini aniq kalendar bo'yicha hisoblash
+  let diffWeeks = myCycleWeek - currentCycleWeek;
+  if (diffWeeks < 0 || (diffWeeks === 0 && myDayOfWeek < todayDay)) {
+    // Navbat bu siklda o'tib ketgan bo'lsa, keyingi to'liq siklda keladi
+    diffWeeks += totalWeeks;
   }
+  const daysUntil = (diffWeeks * 7) + (myDayOfWeek - todayDay);
 
-  // 4. Agar joriy haftada asosiy bo'lmasa, kelgusi haftalarda qachon navbatchi bo'ladi?
-  // O'qituvchilar soniga qarab qaysi haftada va qaysi kunda navbati kelishi aniq hisoblanadi:
-  const totalTeachers = shiftTeachers.length;
-  let projectedWeekNumber = 2; // Kelgusi hafta (2-hafta)
-  let projectedDayOfWeek = 1;
-
-  if (totalTeachers > 0 && myIndex >= 0) {
-    // 6 kunlik haftada o'rin:
-    const cycleWeek = Math.floor(myIndex / 6) + 1;
-    projectedWeekNumber = cycleWeek > 1 ? cycleWeek : 2;
-    
-    let daySlot = (myIndex % 6) + 1;
-    // Boshlang'ich 1-5 sinflar Shanba (day 6) ololmaydi, dushanbaga o'tadi
-    const isLower = isGrade1to5(teacherClass.name);
-    if (isLower && daySlot === 6) {
-      daySlot = 1;
-      projectedWeekNumber += 1;
-    }
-    projectedDayOfWeek = daySlot;
-  }
-
-  const dayObj = WEEK_DAYS.find(w => w.id === projectedDayOfWeek);
-
-  // Aniq kalendar sanasini hisoblash (Joriy haftaning Dushanbasidan hisoblab)
-  const now = new Date();
-  const currentDayIndex = now.getDay(); // 0=Yak, 1=Dush...
-  const distToMonday = currentDayIndex === 0 ? -6 : 1 - currentDayIndex;
-  const mondayDate = new Date(now);
-  mondayDate.setDate(now.getDate() + distToMonday);
-
-  const targetDate = new Date(mondayDate);
-  targetDate.setDate(mondayDate.getDate() + ((projectedWeekNumber - 1) * 7) + (projectedDayOfWeek - 1));
-  
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() + daysUntil);
   const y = targetDate.getFullYear();
   const m = String(targetDate.getMonth() + 1).padStart(2, '0');
   const d = String(targetDate.getDate()).padStart(2, '0');
   const targetISO = `${y}-${m}-${d}`;
 
-  const weekText = projectedWeekNumber === 2 
-    ? "Kelgusi hafta (2-hafta)" 
-    : `${projectedWeekNumber}-haftada`;
+  const dayObj = WEEK_DAYS.find(w => w.id === myDayOfWeek);
+
+  const myBackupRosters = rosters.filter(r => 
+    r.shiftId === shift.id &&
+    ((r.backupTeacherClassId && r.backupTeacherClassId === teacherClass.id) ||
+     (cleanTeacherName && (r.backupTeacherName || '').trim().toLowerCase() === cleanTeacherName))
+  );
 
   return {
     isExcluded: false,
-    isThisWeek: false,
-    isBackupThisWeek,
-    backupDaysText,
-    role: isBackupThisWeek ? 'backup_only' : 'upcoming',
-    backupRosters: myBackupRosters,
-    projectedWeekNumber,
-    weekText,
-    projectedDayOfWeek,
-    dayName: dayObj?.name || `Kun ${projectedDayOfWeek}`,
-    projectedDateISO: targetISO,
-    projectedDateFormatted: formatReadableDate(targetISO),
+    isThisWeek,
+    isToday,
+    role: isToday ? 'primary' : (isThisWeek ? 'this_week' : 'upcoming'),
+    dayOfWeek: myDayOfWeek,
+    dayName: dayObj?.name || `Kun ${myDayOfWeek}`,
     shiftId: shift.id,
     shiftName: shift.name,
     shiftHours: `${shift.startTime || '08:00'} - ${shift.endTime || '13:00'}`,
-    queuePosition: myIndex >= 0 ? myIndex + 1 : null,
+    queuePosition: myIndex >= 0 ? myIndex + 1 : 1,
     totalInGroup: totalTeachers,
+    totalWeeks,
+    currentCycleWeek,
+    projectedWeekNumber: myCycleWeek,
+    weekText: isThisWeek ? `${myCycleWeek}-hafta (Joriy hafta)` : `${myCycleWeek}-hafta`,
+    projectedDateISO: targetISO,
+    projectedDateFormatted: formatReadableDate(targetISO),
+    backupRosters: myBackupRosters,
+    isBackupThisWeek: myBackupRosters.some(r => Number(r.weekNumber || 1) === currentCycleWeek),
+    backupDaysText: myBackupRosters.map(r => getDayName(Number(r.dayOfWeek))).join(', '),
     allGroupTeachersQueue
   };
 }
@@ -1221,8 +1248,9 @@ export function includeClassToDutyShift(classId, shiftId, schoolId, state) {
 }
 
 /**
- * Maktab bo'yicha bugungi kungi barcha navbatchi o'qituvchilar ro'yxati (masalan, 2 ta smena = 2 ta navbatchi)
- * Agar navbatchi kelolmaslik sababini qoldirgan bo'lsa, tizim tomonidan almashtirilgan yangi navbatchi aks etadi.
+ * Maktab bo'yicha berilgan sana (yoki bugun) uchun barcha navbatchi o'qituvchilar ro'yxati (2 ta smena = 2 ta navbatchi)
+ * - To'liq siklik adolatli rotatsiya asosida ishlaydi (barcha o'qituvchilar o'z navbatida qatnashadi).
+ * - Agar navbatchi kelolmaslik sababini qoldirgan bo'lsa, tizim tomonidan almashtirilgan zaxira navbatchi aks etadi.
  */
 export function getTodayDutyTeachersForSchool(schoolId, state, optionalDateStr = '') {
   if (!schoolId || !state) return [];
@@ -1248,7 +1276,6 @@ export function getTodayDutyTeachersForSchool(schoolId, state, optionalDateStr =
     return aNum - bNum;
   });
 
-  // Agar smenalar hali yaratilmagan bo'lsa, standart 1-smena
   if (shifts.length === 0) {
     shifts = [{
       id: `shift_1_${schoolId}`,
@@ -1261,76 +1288,92 @@ export function getTodayDutyTeachersForSchool(schoolId, state, optionalDateStr =
   }
 
   const allSchoolRosters = (state.dutyRosters || []).filter(r => r.schoolId === schoolId);
-
-  // Bugungi kun uchun ro'yxatni olish
-  let rosters = allSchoolRosters.filter(r => Number(r.dayOfWeek) === Number(todayDay));
-
-  // Agar bugungi kunga (masalan, Yakshanba kuni yoki hali belgilanmagan kunda) jadval bo'lmasa,
-  // Dushanba (1-kun) yoki mavjud eng birinchi ish kuni jadvalidan foydalanamiz
-  if (rosters.length === 0 && allSchoolRosters.length > 0) {
-    rosters = allSchoolRosters.filter(r => Number(r.dayOfWeek) === 1);
-    if (rosters.length === 0) {
-      rosters = allSchoolRosters.filter(r => Number(r.dayOfWeek) === 2);
-    }
-    if (rosters.length === 0) {
-      rosters = allSchoolRosters;
-    }
-  }
-
-  // Agar umuman navbatchilik jadvali saqlanmagan bo'lsa, tizim avtomatik tartib bilan aniqlaydi
-  if (rosters.length === 0 && classes.length > 0) {
-    const generated = generateOrderlyDutyRosters(schoolId, shifts, classes);
-    rosters = generated.filter(r => Number(r.dayOfWeek) === Number(todayDay));
-    if (rosters.length === 0) {
-      rosters = generated.filter(r => Number(r.dayOfWeek) === 1);
-    }
-    if (rosters.length === 0) {
-      rosters = generated;
-    }
-  }
-
   const absences = (state.dutyAbsences || []).filter(a => a.schoolId === schoolId && a.date === todayISO);
 
   const list = [];
   shifts.forEach((shift, shiftIndex) => {
-    const isShift1 = Boolean(shift.name?.includes('1') || shift.id?.includes('shift_1') || shift.id?.includes('_1_'));
-    const isShift2 = Boolean(shift.name?.includes('2') || shift.id?.includes('shift_2') || shift.id?.includes('_2_'));
+    const assignedClassIds = new Set(shift.classIds || []);
+    let shiftTeachers = classes
+      .filter(c => assignedClassIds.has(c.id) && Boolean(c.teacherName && c.teacherName.trim()))
+      .sort((a, b) => compareClassNames(a.name, b.name))
+      .map(c => ({
+        name: c.teacherName.trim(),
+        phone: c.teacherPhone || '',
+        classId: c.id,
+        className: c.name,
+        isLowerGrade: isGrade1to5(c.name)
+      }));
 
-    // 1. To'g'ridan-to'g'ri ID bo'yicha qidirish
-    let roster = rosters.find(r => r.shiftId === shift.id);
-
-    // 2. Agar topilmasa, smena nomi/raqami bo'yicha moslashtirish (masalan: shift_2_... bilan 2-smena)
-    if (!roster) {
-      if (isShift2) {
-        roster = rosters.find(r => r.shiftId?.includes('_2_') || r.shiftId?.includes('shift_2') || r.shiftName?.includes('2') || r.id?.includes('_shift_2_'));
-      } else if (isShift1) {
-        roster = rosters.find(r => r.shiftId?.includes('_1_') || r.shiftId?.includes('shift_1') || r.shiftName?.includes('1') || r.id?.includes('_shift_1_'));
-      }
+    if (shiftTeachers.length === 0) {
+      shiftTeachers = classes
+        .filter(c => Boolean(c.teacherName && c.teacherName.trim()))
+        .sort((a, b) => compareClassNames(a.name, b.name))
+        .map(c => ({
+          name: c.teacherName.trim(),
+          phone: c.teacherPhone || '',
+          classId: c.id,
+          className: c.name,
+          isLowerGrade: isGrade1to5(c.name)
+        }));
     }
 
-    // 3. Agar topilmasa, indeks bo'yicha (har bir smena uchun alohida)
-    if (!roster && rosters.length > shiftIndex) {
-      roster = rosters[shiftIndex];
+    const totalTeachers = Math.max(1, shiftTeachers.length);
+    const totalWeeks = totalTeachers <= 6 ? 1 : Math.max(1, Math.ceil(totalTeachers / 5));
+    const currentCycleWeek = getCycleWeekForDate(todayISO, totalWeeks);
+
+    // 1. Shu smena, joriy sikl haftasi va bugungi kun bo'yicha saqlangan jadvaldan qidirish
+    let roster = allSchoolRosters.find(r => 
+      r.shiftId === shift.id && 
+      Number(r.dayOfWeek) === Number(todayDay) && 
+      Number(r.weekNumber) === Number(currentCycleWeek)
+    );
+
+    // 2. Agar hafta raqamisiz saqlangan bo'lsa yoki topilmasa
+    if (!roster && totalWeeks === 1) {
+      roster = allSchoolRosters.find(r => 
+        r.shiftId === shift.id && 
+        Number(r.dayOfWeek) === Number(todayDay)
+      );
     }
 
-    // 4. Agar hali ham topilmasa, smena yoki maktab sinf rahbarlaridan biriktirish
-    if (!roster) {
-      const shiftClasses = classes.filter(c => (shift.classIds || []).includes(c.id) && Boolean(c.teacherName && c.teacherName.trim()));
-      const availableTeachers = shiftClasses.length > 0 ? shiftClasses : classes.filter(c => Boolean(c.teacherName && c.teacherName.trim()));
-      const t1 = availableTeachers[shiftIndex % Math.max(1, availableTeachers.length)] || availableTeachers[0];
-      const t2 = availableTeachers[(shiftIndex + 1) % Math.max(1, availableTeachers.length)] || t1;
-      if (t1) {
+    // 3. Agar bazada ushbu hafta uchun jadval bo'lmasa, rotatsiya sikli bo'yicha adolatli va uzluksiz generatordan olish
+    if (!roster && shiftTeachers.length > 0) {
+      if (todayDay === 7) {
         roster = {
-          primaryTeacherName: t1.teacherName,
-          primaryTeacherPhone: t1.teacherPhone || '',
-          primaryTeacherClassId: t1.id,
-          primaryTeacherClassName: t1.name,
-          backupTeacherName: t2?.teacherName || t1.teacherName,
-          backupTeacherPhone: t2?.teacherPhone || t1.teacherPhone || '',
-          backupTeacherClassId: t2?.id || t1.id,
-          backupTeacherClassName: t2?.name || t1.name
+          primaryTeacherName: "Dam olish kuni",
+          primaryTeacherPhone: "",
+          primaryTeacherClassId: "",
+          primaryTeacherClassName: "",
+          backupTeacherName: "-",
+          backupTeacherPhone: "",
+          backupTeacherClassId: "",
+          backupTeacherClassName: ""
         };
+      } else {
+        const generatedForShift = generateOrderlyDutyRosters(schoolId, [shift], classes);
+        roster = generatedForShift.find(r => 
+          r.shiftId === shift.id && 
+          Number(r.dayOfWeek) === Number(todayDay) && 
+          Number(r.weekNumber) === Number(currentCycleWeek)
+        );
       }
+    }
+
+    // 4. Oddiy fallback
+    if (!roster) {
+      const fallbackTeacher = shiftTeachers[shiftIndex % Math.max(1, shiftTeachers.length)] || {
+        name: "Navbatchi belgilanmagan", phone: "", classId: "", className: ""
+      };
+      roster = {
+        primaryTeacherName: fallbackTeacher.name,
+        primaryTeacherPhone: fallbackTeacher.phone,
+        primaryTeacherClassId: fallbackTeacher.classId,
+        primaryTeacherClassName: fallbackTeacher.className,
+        backupTeacherName: fallbackTeacher.name,
+        backupTeacherPhone: fallbackTeacher.phone,
+        backupTeacherClassId: fallbackTeacher.classId,
+        backupTeacherClassName: fallbackTeacher.className
+      };
     }
 
     const primaryName = roster?.primaryTeacherName || 'Belgilanmagan';
@@ -1366,11 +1409,12 @@ export function getTodayDutyTeachersForSchool(schoolId, state, optionalDateStr =
       originalTeacherPhone: activeAbsence?.originalTeacherPhone || '',
       reportedAt: activeAbsence?.reportedAt || '',
       delegatedTeacherName: activeAbsence?.delegatedTeacherName || '',
-      isDelegated: Boolean(activeAbsence)
+      isDelegated: Boolean(activeAbsence),
+      cycleWeekNumber: currentCycleWeek,
+      totalCycleWeeks: totalWeeks
     });
   });
 
-  // Maktab bo'yicha har doim aniq 2 ta smenaning 2 ta mas'ul navbatchi o'qituvchisi qaytariladi
   return list.slice(0, 2);
 }
 
@@ -1488,7 +1532,36 @@ export function recordDutyAbsenceAndDelegate(options, reasonArg, onSaveRosterArg
   const todayDay = getTodayDayOfWeek();
   const todayISO = getTodayISODate();
   const shift = (state.shifts || []).find(s => s.id === shiftId);
-  const roster = (state.dutyRosters || []).find(r => r.schoolId === schoolId && r.shiftId === shiftId && Number(r.dayOfWeek) === Number(todayDay));
+  const todayDutyList = getTodayDutyTeachersForSchool(schoolId, state, todayISO);
+  const dutyItem = todayDutyList.find(d => d.shiftId === shiftId);
+  
+  let roster = (state.dutyRosters || []).find(r => 
+    r.schoolId === schoolId && 
+    r.shiftId === shiftId && 
+    Number(r.dayOfWeek) === Number(todayDay) && 
+    Number(r.weekNumber || 1) === Number(dutyItem?.cycleWeekNumber || 1)
+  );
+
+  if (!roster) {
+    roster = (state.dutyRosters || []).find(r => 
+      r.schoolId === schoolId && 
+      r.shiftId === shiftId && 
+      Number(r.dayOfWeek) === Number(todayDay)
+    );
+  }
+
+  if (!roster && dutyItem) {
+    roster = {
+      primaryTeacherName: dutyItem.primaryTeacherName,
+      primaryTeacherPhone: dutyItem.primaryTeacherPhone,
+      primaryTeacherClassId: dutyItem.primaryTeacherClassId,
+      primaryTeacherClassName: dutyItem.primaryTeacherClassName,
+      backupTeacherName: dutyItem.backupTeacherName,
+      backupTeacherPhone: dutyItem.backupTeacherPhone,
+      backupTeacherClassId: dutyItem.backupTeacherClassId,
+      backupTeacherClassName: dutyItem.backupTeacherClassName
+    };
+  }
 
   if (!roster) return null;
 

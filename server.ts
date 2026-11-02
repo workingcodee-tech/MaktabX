@@ -18,8 +18,266 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ============================================================================
+// RAILWAY 8GB PERSISTENT STORAGE ENGINE (Gibrid Baza: Firestore + Railway)
+// ============================================================================
+const RAILWAY_DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(process.cwd(), 'railway-data');
+const RAILWAY_DB_FILE = path.join(RAILWAY_DATA_DIR, 'maktabx-railway-db.json');
+const RAILWAY_TOTAL_CAPACITY_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB (8,192 MB)
+
+interface RailwayDatabaseSchema {
+  storageTargetMode: 'railway' | 'firestore' | 'both';
+  updatedAt: string;
+  collections: {
+    schools: Record<string, any>;
+    classes: Record<string, any>;
+    students: Record<string, any>;
+    recoveryRequests: Record<string, any>;
+    shifts: Record<string, any>;
+    duty_rosters: Record<string, any>;
+    attendance_records: Record<string, any>;
+    duty_absences: Record<string, any>;
+    admin_notifications: Record<string, any>;
+    trash: Record<string, any>;
+    system: Record<string, any>;
+  };
+  deletedIds: Record<string, string[]>;
+}
+
+const VALID_COLLECTIONS = [
+  'schools',
+  'classes',
+  'students',
+  'recoveryRequests',
+  'shifts',
+  'duty_rosters',
+  'attendance_records',
+  'duty_absences',
+  'admin_notifications',
+  'trash',
+  'system'
+] as const;
+
+function createDefaultRailwayDb(): RailwayDatabaseSchema {
+  return {
+    storageTargetMode: 'railway', // Standart: eski ma'lumotlar Firestore'dan o'qiladi, yangilari Railway'ga yoziladi
+    updatedAt: new Date().toISOString(),
+    collections: {
+      schools: {},
+      classes: {},
+      students: {},
+      recoveryRequests: {},
+      shifts: {},
+      duty_rosters: {},
+      attendance_records: {},
+      duty_absences: {},
+      admin_notifications: {},
+      trash: {},
+      system: {}
+    },
+    deletedIds: {}
+  };
+}
+
+let railwayDbMemory: RailwayDatabaseSchema = createDefaultRailwayDb();
+
+function loadRailwayDbFromDisk(): RailwayDatabaseSchema {
+  try {
+    if (!fs.existsSync(RAILWAY_DATA_DIR)) {
+      fs.mkdirSync(RAILWAY_DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(RAILWAY_DB_FILE)) {
+      const raw = fs.readFileSync(RAILWAY_DB_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      const def = createDefaultRailwayDb();
+      railwayDbMemory = {
+        storageTargetMode: ['railway', 'firestore', 'both'].includes(parsed?.storageTargetMode)
+          ? parsed.storageTargetMode
+          : 'railway',
+        updatedAt: parsed?.updatedAt || new Date().toISOString(),
+        collections: {
+          ...def.collections,
+          ...(parsed?.collections || {})
+        },
+        deletedIds: parsed?.deletedIds || {}
+      };
+    } else {
+      saveRailwayDbToDisk();
+    }
+  } catch (err) {
+    console.warn('[Railway DB] Diskdan o\'qishda bildirishnoma, xotira rejimi ishlatilmoqda:', err);
+  }
+  return railwayDbMemory;
+}
+
+function saveRailwayDbToDisk(): boolean {
+  try {
+    if (!fs.existsSync(RAILWAY_DATA_DIR)) {
+      fs.mkdirSync(RAILWAY_DATA_DIR, { recursive: true });
+    }
+    railwayDbMemory.updatedAt = new Date().toISOString();
+    const tmpFile = `${RAILWAY_DB_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(railwayDbMemory, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, RAILWAY_DB_FILE);
+    return true;
+  } catch (err) {
+    console.warn('[Railway DB] Diskka yozishda bildirishnoma:', err);
+    return false;
+  }
+}
+
+// Dastlabki yuklash
+loadRailwayDbFromDisk();
+
+// Railway DB holati va barcha ma'lumotlarni olish
+app.get('/api/railway-db/state', (req, res) => {
+  try {
+    const serialized = JSON.stringify(railwayDbMemory.collections);
+    const usedBytes = Buffer.byteLength(serialized, 'utf-8');
+    const counts: Record<string, number> = {};
+    for (const col of VALID_COLLECTIONS) {
+      counts[col] = Object.keys(railwayDbMemory.collections[col] || {}).length;
+    }
+    res.json({
+      success: true,
+      storageTargetMode: railwayDbMemory.storageTargetMode || 'railway',
+      updatedAt: railwayDbMemory.updatedAt,
+      capacityBytes: RAILWAY_TOTAL_CAPACITY_BYTES,
+      usedBytes,
+      counts,
+      collections: railwayDbMemory.collections,
+      deletedIds: railwayDbMemory.deletedIds || {}
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Railway DB state error' });
+  }
+});
+
+// Saqlash manbasini o'zgartirish ('railway' | 'firestore' | 'both')
+app.post('/api/railway-db/config', (req, res) => {
+  try {
+    const { storageTargetMode } = req.body || {};
+    if (!['railway', 'firestore', 'both'].includes(storageTargetMode)) {
+      return res.status(400).json({ success: false, error: "Noto'g'ri saqlash rejimi" });
+    }
+    railwayDbMemory.storageTargetMode = storageTargetMode;
+    saveRailwayDbToDisk();
+    res.json({
+      success: true,
+      storageTargetMode: railwayDbMemory.storageTargetMode,
+      updatedAt: railwayDbMemory.updatedAt
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Config update error' });
+  }
+});
+
+// Bitta hujjatni Railway bazasiga saqlash yoki yangilash
+app.post('/api/railway-db/doc', (req, res) => {
+  try {
+    const { collection: colName, id, data, merge = true } = req.body || {};
+    if (!colName || !VALID_COLLECTIONS.includes(colName) || !id || !data) {
+      return res.status(400).json({ success: false, error: "Kolleksiya nomi, ID yoki ma'lumot yetarli emas" });
+    }
+    const colMap = railwayDbMemory.collections[colName as keyof typeof railwayDbMemory.collections] || {};
+    const existing = colMap[id] || {};
+    const docToSave = merge
+      ? { ...existing, ...data, id, _storageSource: 'railway', _savedAt: new Date().toISOString() }
+      : { ...data, id, _storageSource: 'railway', _savedAt: new Date().toISOString() };
+
+    colMap[id] = docToSave;
+    railwayDbMemory.collections[colName as keyof typeof railwayDbMemory.collections] = colMap;
+
+    // Agar ilgari o'chirilganlar ro'yxatida bo'lsa, undan chiqarish
+    if (Array.isArray(railwayDbMemory.deletedIds[colName])) {
+      railwayDbMemory.deletedIds[colName] = railwayDbMemory.deletedIds[colName].filter(delId => delId !== id);
+    }
+
+    saveRailwayDbToDisk();
+    res.json({ success: true, doc: docToSave, updatedAt: railwayDbMemory.updatedAt });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Document save error' });
+  }
+});
+
+// Hujjatni Railway bazasidan o'chirish
+app.delete('/api/railway-db/doc/:collection/:id', (req, res) => {
+  try {
+    const colName = req.params.collection as keyof typeof railwayDbMemory.collections;
+    const id = req.params.id;
+    if (!colName || !VALID_COLLECTIONS.includes(colName) || !id) {
+      return res.status(400).json({ success: false, error: "Kolleksiya yoki ID noto'g'ri" });
+    }
+    if (railwayDbMemory.collections[colName] && railwayDbMemory.collections[colName][id]) {
+      delete railwayDbMemory.collections[colName][id];
+    }
+    if (!Array.isArray(railwayDbMemory.deletedIds[colName])) {
+      railwayDbMemory.deletedIds[colName] = [];
+    }
+    if (!railwayDbMemory.deletedIds[colName].includes(id)) {
+      railwayDbMemory.deletedIds[colName].push(id);
+    }
+    saveRailwayDbToDisk();
+    res.json({ success: true, deletedId: id, updatedAt: railwayDbMemory.updatedAt });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Document delete error' });
+  }
+});
+
+// Firestore'dan yoki zaxira fayldan Railway bazasiga ommaviy nusxalash (0% yo'qotishsiz)
+app.post('/api/railway-db/bulk-sync', (req, res) => {
+  try {
+    const { collections } = req.body || {};
+    if (!collections || typeof collections !== 'object') {
+      return res.status(400).json({ success: false, error: "Ma'lumotlar obyekti yuborilmadi" });
+    }
+    let syncedCount = 0;
+    for (const colName of VALID_COLLECTIONS) {
+      const incoming = collections[colName];
+      if (Array.isArray(incoming)) {
+        const colMap = railwayDbMemory.collections[colName] || {};
+        incoming.forEach((item: any) => {
+          if (item && item.id) {
+            colMap[item.id] = {
+              ...(colMap[item.id] || {}),
+              ...item,
+              _storageSource: colMap[item.id]?._storageSource || 'railway',
+              _syncedAt: new Date().toISOString()
+            };
+            syncedCount++;
+          }
+        });
+        railwayDbMemory.collections[colName] = colMap;
+      } else if (incoming && typeof incoming === 'object') {
+        const colMap = railwayDbMemory.collections[colName] || {};
+        Object.entries(incoming).forEach(([docId, item]: [string, any]) => {
+          if (item && typeof item === 'object') {
+            colMap[docId] = {
+              ...(colMap[docId] || {}),
+              ...item,
+              id: docId,
+              _storageSource: 'railway',
+              _syncedAt: new Date().toISOString()
+            };
+            syncedCount++;
+          }
+        });
+        railwayDbMemory.collections[colName] = colMap;
+      }
+    }
+    saveRailwayDbToDisk();
+    res.json({
+      success: true,
+      syncedCount,
+      updatedAt: railwayDbMemory.updatedAt
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Bulk sync error' });
+  }
+});
 
 const DEVSMS_TOKEN = process.env.DEVSMS_API_TOKEN || "aad6068ae495af3c0038b041600297ff2a54d8d419ca5f0e7cb97c88c6e12586";
 const DEVSMS_ENDPOINT = "https://devsms.uz/api/send_sms.php";

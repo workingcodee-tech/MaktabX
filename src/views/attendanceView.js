@@ -17,6 +17,7 @@ import {
   compareClassNames,
   getStudentContactPhone,
   generateOrderlyDutyRosters,
+  getCycleWeekForDate,
   getTodayDutyInfoForTeacher,
   getTodayDutyTeachersForSchool,
   recordDutyAbsenceAndDelegate,
@@ -133,6 +134,7 @@ export function renderAttendanceView(container, {
     : (isCurrentUserDutyOfficer ? 'take_attendance' : (initialTab === 'take_attendance' ? 'duty_officers' : (initialTab || 'duty_officers')));
   let selectedDate = getTodayISODate();
   let selectedShiftId = schoolShifts[0]?.id || '';
+  let selectedRosterWeekNumber = null;
   let selectedClassIdForAttendance = null;
   let activeTakingAttendanceData = null; // Working copy when taking attendance
   let sendingSmsStudentId = null;
@@ -151,16 +153,37 @@ export function renderAttendanceView(container, {
     return (state.attendanceRecords || []).find(r => r.schoolId === schoolId && r.shiftId === shiftId && r.date === dateStr);
   }
 
-  // Yordamchi: Berilgan smena va kun uchun navbatchi o'qituvchini topish
-  function getRosterForShiftAndDay(shiftId, dayNum) {
-    return schoolRosters.find(r => r.shiftId === shiftId && Number(r.dayOfWeek) === Number(dayNum));
+  // Yordamchi: Berilgan smena va kun uchun navbatchi o'qituvchini topish (Sikl haftasini hisobga oladi)
+  function getRosterForShiftAndDay(shiftId, dayNum, optionalDateOrWeek = null) {
+    const shift = schoolShifts.find(s => s.id === shiftId);
+    const assignedCount = Math.max(1, (shift?.classIds || []).length);
+    const totalW = Math.max(1, Math.ceil(assignedCount / 6));
+
+    let weekNum = selectedRosterWeekNumber;
+    if (typeof optionalDateOrWeek === 'number') {
+      weekNum = optionalDateOrWeek;
+    } else if (typeof optionalDateOrWeek === 'string' && optionalDateOrWeek) {
+      weekNum = getCycleWeekForDate(optionalDateOrWeek, totalW);
+    }
+    if (!weekNum) {
+      weekNum = getCycleWeekForDate(selectedDate || todayDate, totalW);
+    }
+
+    return schoolRosters.find(r => 
+      r.shiftId === shiftId && 
+      Number(r.dayOfWeek) === Number(dayNum) && 
+      Number(r.weekNumber || 1) === Number(weekNum)
+    ) || schoolRosters.find(r => 
+      r.shiftId === shiftId && 
+      Number(r.dayOfWeek) === Number(dayNum)
+    );
   }
 
   // Eskalatsiya (Zaxiraga o'tish) tekshiruvi
   function getShiftDutyStatus(shift, dateStr) {
     const isToday = dateStr === todayDate;
     const dayOfWeek = isToday ? todayDayOfWeek : new Date(dateStr).getDay() || 7;
-    const roster = getRosterForShiftAndDay(shift.id, dayOfWeek);
+    const roster = getRosterForShiftAndDay(shift.id, dayOfWeek, dateStr);
     const existingRecord = getAttendanceRecord(shift.id, dateStr);
 
     const primaryName = roster?.primaryTeacherName || "Belgilanmagan";
@@ -4183,6 +4206,14 @@ export function renderAttendanceView(container, {
 
   // 4. NAVBATCHILIK JADVALI TABI (ROSTER)
   function renderRosterTab() {
+    const activeShift = schoolShifts.find(s => s.id === selectedShiftId) || schoolShifts[0];
+    const shiftClassCount = Math.max(1, (activeShift?.classIds || []).length);
+    const totalCycleWeeks = shiftClassCount <= 6 ? 1 : Math.max(1, Math.ceil(shiftClassCount / 5));
+    const currentAcademicWeek = getCycleWeekForDate(getTodayISODate(), totalCycleWeeks);
+    if (!selectedRosterWeekNumber || selectedRosterWeekNumber < 1 || selectedRosterWeekNumber > totalCycleWeeks) {
+      selectedRosterWeekNumber = currentAcademicWeek;
+    }
+
     return `
       <div class="space-y-4">
         
@@ -4190,7 +4221,7 @@ export function renderAttendanceView(container, {
           <div>
             <h3 class="text-base font-bold text-slate-900">Haftalik Navbatchilik Jadvali</h3>
             <p class="text-xs text-slate-500">
-              Har bir smena va hafta kuni uchun Asosiy va Zaxira (Dublyor) navbatchi o'qituvchilarni belgilash
+              Har bir smena va hafta kuni uchun Asosiy va Zaxira (Dublyor) navbatchi o'qituvchilarni belgilash (${totalCycleWeeks} haftalik to'liq sikl)
             </p>
           </div>
 
@@ -4218,14 +4249,28 @@ export function renderAttendanceView(container, {
                 `).join('')}
               </select>
             </div>
+
+            <div class="flex items-center gap-1.5 bg-amber-50/80 px-2 py-1 rounded-xl border border-amber-200">
+              <span class="text-xs text-amber-900 font-bold">Hafta:</span>
+              <select 
+                id="roster-week-select" 
+                class="px-2 py-0.5 text-xs font-bold bg-white border border-amber-300 rounded-lg text-amber-950 focus:outline-none cursor-pointer"
+              >
+                ${Array.from({ length: totalCycleWeeks }, (_, i) => i + 1).map(w => `
+                  <option value="${w}" ${w === selectedRosterWeekNumber ? 'selected' : ''}>
+                    ${w}-hafta ${w === currentAcademicWeek ? '(⭐ Hozirgi)' : ''}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
           </div>
         </div>
 
         <!-- Hafta kunlari jadvali -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           ${WEEK_DAYS.map(day => {
-            const roster = getRosterForShiftAndDay(selectedShiftId, day.id);
-            const isToday = day.id === todayDayOfWeek;
+            const roster = getRosterForShiftAndDay(selectedShiftId, day.id, selectedRosterWeekNumber);
+            const isToday = (selectedRosterWeekNumber === currentAcademicWeek) && (day.id === todayDayOfWeek);
 
             return `
               <div class="bg-white p-4 rounded-2xl border ${isToday ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200/90'} shadow-xs flex flex-col justify-between gap-3">
@@ -4245,6 +4290,7 @@ export function renderAttendanceView(container, {
                       class="btn-edit-day-roster text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
                       data-day-id="${day.id}"
                       data-shift-id="${selectedShiftId}"
+                      data-week-num="${selectedRosterWeekNumber}"
                     >
                       Tahrirlash
                     </button>
@@ -4599,11 +4645,24 @@ export function renderAttendanceView(container, {
           showToast("Smenalar yoki sinflar topilmadi", 'error');
           return;
         }
-        newRosters.forEach(r => {
-          if (onSaveRoster) onSaveRoster(r);
+        if (!state.dutyRosters) state.dutyRosters = [];
+        newRosters.forEach(newR => {
+          const exIdx = state.dutyRosters.findIndex(r => 
+            r.schoolId === schoolId && 
+            r.shiftId === newR.shiftId && 
+            Number(r.dayOfWeek) === Number(newR.dayOfWeek) &&
+            Number(r.weekNumber || 1) === Number(newR.weekNumber || 1)
+          );
+          if (exIdx >= 0) {
+            state.dutyRosters[exIdx] = newR;
+          } else {
+            state.dutyRosters.push(newR);
+          }
+          if (onSaveRoster) onSaveRoster(newR);
         });
-        schoolRosters = newRosters;
-        showToast("Guruhlar bo'yicha barcha sinf rahbarlari tartib bilan avtomatik navbatchi etib tayinlandi!", 'success');
+        saveData(state);
+        schoolRosters = state.dutyRosters.filter(r => r.schoolId === schoolId);
+        showToast("Guruhlar bo'yicha barcha sinf rahbarlari to'liq sikl bilan adolatli navbatchi etib tayinlandi!", 'success');
         render();
       });
     });
@@ -4871,12 +4930,18 @@ export function renderAttendanceView(container, {
       render();
     });
 
+    document.getElementById('roster-week-select')?.addEventListener('change', (e) => {
+      selectedRosterWeekNumber = Number(e.target.value);
+      render();
+    });
+
     // 16. Navbatchilik jadvali tahrirlash
     container.querySelectorAll('.btn-edit-day-roster').forEach(btn => {
       btn.addEventListener('click', () => {
         const dayId = Number(btn.getAttribute('data-day-id'));
         const shiftId = btn.getAttribute('data-shift-id');
-        openRosterEditModal(shiftId, dayId);
+        const weekNum = Number(btn.getAttribute('data-week-num') || selectedRosterWeekNumber || 1);
+        openRosterEditModal(shiftId, dayId, weekNum);
       });
     });
 
@@ -5387,10 +5452,10 @@ export function renderAttendanceView(container, {
   }
 
   // Roster (Navbatchilik jadvali) tahrirlash modali
-  function openRosterEditModal(shiftId, dayId) {
+  function openRosterEditModal(shiftId, dayId, weekNum = 1) {
     const shift = schoolShifts.find(s => s.id === shiftId);
     const day = WEEK_DAYS.find(w => w.id === dayId);
-    const existing = getRosterForShiftAndDay(shiftId, dayId);
+    const existing = getRosterForShiftAndDay(shiftId, dayId, weekNum);
 
     const modalId = 'roster-edit-modal';
     const old = document.getElementById(modalId);
@@ -5407,7 +5472,7 @@ export function renderAttendanceView(container, {
     div.innerHTML = `
       <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 animate-scale-in text-left">
         <h3 class="text-base font-bold text-slate-900 mb-1">
-          Navbatchini Belgilash: ${day?.name} (${shift?.name})
+          Navbatchini Belgilash: ${weekNum}-hafta • ${day?.name} (${shift?.name})
         </h3>
         <p class="text-xs text-slate-500 mb-3">
           Asosiy navbatchi va zaxira (dublyor) o'qituvchini tanlang
@@ -5537,7 +5602,11 @@ export function renderAttendanceView(container, {
         (c.teacherName && c.teacherName.trim().toLowerCase() === backupName.toLowerCase())
       );
 
-      const shiftRosters = (state.dutyRosters || []).filter(r => r.schoolId === schoolId && r.shiftId === shiftId);
+      const shiftRosters = (state.dutyRosters || []).filter(r => 
+        r.schoolId === schoolId && 
+        r.shiftId === shiftId &&
+        Number(r.weekNumber || 1) === Number(weekNum)
+      );
       const valResult = validateDutyAssignment({
         dayOfWeek: dayId,
         primaryClass,
@@ -5552,9 +5621,10 @@ export function renderAttendanceView(container, {
       }
 
       const newRoster = {
-        id: existing?.id || `roster_${schoolId}_${shiftId}_day${dayId}`,
+        id: existing?.id || `roster_${schoolId}_${shiftId}_w${weekNum}_day${dayId}`,
         schoolId,
         shiftId,
+        weekNumber: Number(weekNum),
         dayOfWeek: Number(dayId),
         primaryTeacherName: primaryName,
         primaryTeacherPhone: primaryPhone || primaryClass?.teacherPhone || '',
@@ -5564,12 +5634,22 @@ export function renderAttendanceView(container, {
         backupTeacherPhone: backupPhone || backupClass?.teacherPhone || '',
         backupTeacherClassId: backupClass?.id || '',
         backupTeacherClassName: backupClass?.name || '',
-        notes: notes || (isSaturday ? "Shanba navbatchisi (6-11 sinf mas'uli)" : `Haftalik navbatchilik jadvali`),
+        notes: notes || (isSaturday ? `${weekNum}-hafta Shanba navbatchisi (6-11 sinf mas'uli)` : `${weekNum}-hafta navbatchilik jadvali`),
         updatedAt: new Date().toISOString()
       };
 
       if (onSaveRoster) onSaveRoster(newRoster);
-      showToast(`${day?.name} uchun navbatchilik jadvali saqlandi!`, 'success');
+
+      // Agar 1-hafta bo'lsa, legacy ID bilan ham saqlash
+      if (Number(weekNum) === 1) {
+        const legacyRoster = {
+          ...newRoster,
+          id: `roster_${schoolId}_${shiftId}_day${dayId}`
+        };
+        if (onSaveRoster) onSaveRoster(legacyRoster);
+      }
+
+      showToast(`${weekNum}-hafta ${day?.name} uchun navbatchilik jadvali saqlandi!`, 'success');
       div.remove();
       render();
     });

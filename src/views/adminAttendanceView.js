@@ -22,6 +22,7 @@ import {
   getStudentContactPhone,
   cleanPhone,
   getTodayDutyTeachersForSchool,
+  getCycleWeekForDate,
   generateOrderlyDutyRosters,
   saveData,
   isGrade1to5,
@@ -75,6 +76,7 @@ export function renderAdminAttendanceView(container, {
   let studentSearchQuery = '';
   let teacherSearchQuery = '';
   let selectedRosterShiftId = '';
+  let selectedRosterWeekNumber = null;
   let isSendingSmsId = null;
 
   // Maktab sinflari va o'quvchilari
@@ -2449,6 +2451,21 @@ export function renderAdminAttendanceView(container, {
     const currentShift = schoolShifts.find(s => s.id === selectedRosterShiftId) || schoolShifts[0];
     const shiftId = currentShift?.id || '';
 
+    // Ushbu smenadagi sinflar va o'qituvchilar navbat zanjiri
+    const assignedClassIds = new Set(currentShift?.classIds || []);
+    let shiftClasses = schoolClasses.filter(c => assignedClassIds.has(c.id) && Boolean(c.teacherName && c.teacherName.trim()));
+    if (shiftClasses.length === 0) {
+      shiftClasses = schoolClasses.filter(c => Boolean(c.teacherName && c.teacherName.trim()));
+    }
+
+    const totalShiftTeachers = Math.max(1, shiftClasses.length);
+    const totalRosterWeeks = totalShiftTeachers <= 6 ? 1 : Math.max(1, Math.ceil(totalShiftTeachers / 5));
+    const currentAcademicWeek = getCycleWeekForDate(getTodayISODate(), totalRosterWeeks);
+
+    if (!selectedRosterWeekNumber || selectedRosterWeekNumber < 1 || selectedRosterWeekNumber > totalRosterWeeks) {
+      selectedRosterWeekNumber = currentAcademicWeek;
+    }
+
     // Maktab navbatchilik jadvallari
     let rosters = (state.dutyRosters || []).filter(r => r.schoolId === schoolId && r.shiftId === shiftId);
     if (rosters.length === 0 && schoolClasses.length > 0 && schoolShifts.length > 0) {
@@ -2466,13 +2483,6 @@ export function renderAdminAttendanceView(container, {
       }
     }
 
-    // Ushbu smenadagi sinflar va o'qituvchilar navbat zanjiri
-    const assignedClassIds = new Set(currentShift?.classIds || []);
-    let shiftClasses = schoolClasses.filter(c => assignedClassIds.has(c.id) && Boolean(c.teacherName && c.teacherName.trim()));
-    if (shiftClasses.length === 0) {
-      shiftClasses = schoolClasses.filter(c => Boolean(c.teacherName && c.teacherName.trim()));
-    }
-
     const todayDay = getTodayDayOfWeek();
 
     return `
@@ -2485,7 +2495,7 @@ export function renderAdminAttendanceView(container, {
               <span>⭐ 5-Bo'lim: Haftalik Navbatchilik Jadvali va Ketma-ketligi</span>
             </h2>
             <p class="text-xs text-slate-500 mt-0.5">
-              Guruhlar (smenalar) bo'yicha qaysi o'qituvchidan keyin qaysi biri navbatchi bo'lishi va zaxiralar
+              Guruhlar (smenalar) bo'yicha to'liq sikl navbati va zaxiralar
             </p>
           </div>
 
@@ -2505,12 +2515,27 @@ export function renderAdminAttendanceView(container, {
               </select>
             </div>
 
+            <!-- Sikl haftasi tanlagichi -->
+            <div class="flex items-center gap-1.5 bg-amber-50/80 p-1.5 rounded-xl border border-amber-200/80">
+              <label for="admin-roster-week-select" class="text-xs font-bold text-amber-900 pl-1">Sikl haftasi:</label>
+              <select 
+                id="admin-roster-week-select" 
+                class="px-2.5 py-1 text-xs font-bold bg-white border border-amber-300 rounded-lg shadow-2xs focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer text-amber-950"
+              >
+                ${Array.from({ length: totalRosterWeeks }, (_, i) => i + 1).map(w => `
+                  <option value="${w}" ${w === selectedRosterWeekNumber ? 'selected' : ''}>
+                    ${w}-hafta ${w === currentAcademicWeek ? '(⭐ Hozirgi)' : ''}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+
             <!-- Avtomatik navbatchi tayinlash tugmasi -->
             <button 
               type="button" 
               id="btn-auto-assign-roster-sec5" 
               class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-              title="Barcha sinf rahbarlarini haftaning 6 kuniga adolatli navbat bilan taqsimlash"
+              title="Barcha sinf rahbarlarini haftaning 6 kuniga adolatli to'liq sikl bo'yicha taqsimlash"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -2529,7 +2554,7 @@ export function renderAdminAttendanceView(container, {
               <span>🔄</span>
               <span>Ushbu guruhdagi o'qituvchilar navbat ketma-ketligi (Zanjir):</span>
             </span>
-            <span class="text-[11px] text-amber-800 font-mono font-medium">Jami: ${shiftClasses.length} nafar rahbar</span>
+            <span class="text-[11px] text-amber-800 font-mono font-medium">Jami: ${shiftClasses.length} nafar rahbar • ${totalRosterWeeks} haftalik to'liq sikl (Joriy: ${currentAcademicWeek}-hafta)</span>
           </div>
           
           <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar pt-1">
@@ -2537,20 +2562,30 @@ export function renderAdminAttendanceView(container, {
               <span class="text-xs text-amber-800 italic">Sinf rahbarlari topilmadi</span>
             ` : shiftClasses.map((cls, idx) => {
               const isLast = idx === shiftClasses.length - 1;
+              const cleanName = (cls.teacherName || '').trim().toLowerCase();
+              const teacherRoster = rosters.find(r => 
+                Number(r.dayOfWeek) >= 1 && Number(r.dayOfWeek) <= 6 &&
+                ((r.primaryTeacherClassId && r.primaryTeacherClassId === cls.id) ||
+                 (cleanName && (r.primaryTeacherName || '').trim().toLowerCase() === cleanName))
+              );
+              const teacherWeek = teacherRoster ? Number(teacherRoster.weekNumber || 1) : ((Math.floor(idx / 5) % totalRosterWeeks) + 1);
+              const teacherDay = teacherRoster ? Number(teacherRoster.dayOfWeek || 1) : ((idx % 5) + 1);
+              const isMyWeek = teacherWeek === selectedRosterWeekNumber;
               return `
-                <div class="inline-flex items-center gap-1.5 shrink-0 bg-white px-3 py-1.5 rounded-xl border border-amber-200 shadow-2xs font-semibold text-slate-800">
-                  <span class="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center shrink-0">
+                <div class="inline-flex items-center gap-1.5 shrink-0 ${isMyWeek ? 'bg-amber-100/80 ring-2 ring-amber-400 font-bold' : 'bg-white'} px-3 py-1.5 rounded-xl border border-amber-200 shadow-2xs font-semibold text-slate-800" title="${teacherWeek}-hafta ${getDayName(teacherDay)} navbatchisi">
+                  <span class="w-5 h-5 rounded-full ${isMyWeek ? 'bg-amber-600' : 'bg-amber-500'} text-white text-[10px] font-black flex items-center justify-center shrink-0">
                     ${idx + 1}
                   </span>
                   <span class="font-bold text-slate-900">${escapeHtml(cls.teacherName || '')}</span>
                   <span class="text-[11px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 font-mono font-bold">${escapeHtml(cls.name)}</span>
+                  <span class="text-[10px] text-amber-700 bg-amber-50 px-1 rounded font-mono font-medium">${teacherWeek}-h ${getDayName(teacherDay).slice(0, 2)}</span>
                 </div>
                 ${!isLast ? '<span class="text-amber-500 font-bold shrink-0">&rarr;</span>' : '<span class="text-amber-500 font-bold shrink-0">↺ (qaytariladi)</span>'}
               `;
             }).join('')}
           </div>
           <p class="text-[11px] text-amber-900/90 pt-0.5">
-            ℹ️ Navbat tartibi har kuni keyingi o'qituvchiga o'tadi. Asosiy navbatchi kela olmasa, navbat darhol uning ortidan keluvchi zaxiradagi o'qituvchiga topshiriladi.
+            ℹ️ Navbat tartibi har kuni keyingi o'qituvchiga o'tadi va barcha ${totalShiftTeachers} nafar o'qituvchi teng va adolatli ravishda navbatchilikka jalb etiladi.
           </p>
         </div>
 
@@ -2559,8 +2594,12 @@ export function renderAdminAttendanceView(container, {
         <!-- ======================================================== -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
           ${WEEK_DAYS.map((day) => {
-            const roster = rosters.find(r => Number(r.dayOfWeek) === Number(day.id));
-            const isToday = Number(day.id) === Number(todayDay);
+            const roster = rosters.find(r => 
+              Number(r.dayOfWeek) === Number(day.id) && 
+              Number(r.weekNumber || 1) === Number(selectedRosterWeekNumber)
+            ) || (selectedRosterWeekNumber === 1 ? rosters.find(r => Number(r.dayOfWeek) === Number(day.id)) : null);
+
+            const isToday = (selectedRosterWeekNumber === currentAcademicWeek) && (Number(day.id) === Number(todayDay));
 
             return `
               <div class="p-3.5 sm:p-4 rounded-2xl border ${isToday ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-200 shadow-sm' : 'border-slate-200/90 bg-slate-50/50'} space-y-3 flex flex-col justify-between">
@@ -2581,6 +2620,7 @@ export function renderAdminAttendanceView(container, {
                       data-day-id="${day.id}"
                       data-day-name="${day.name}"
                       data-shift-id="${shiftId}"
+                      data-week-num="${selectedRosterWeekNumber}"
                     >
                       ✏️ Tahrirlash
                     </button>
@@ -2639,12 +2679,17 @@ export function renderAdminAttendanceView(container, {
   }
 
   // Navbatchilik kunini tahrirlash modali
-  function openDutyDayEditModal(dayId, dayName, shiftId) {
+  function openDutyDayEditModal(dayId, dayName, shiftId, weekNum = 1) {
     const modalId = 'admin-duty-day-edit-modal';
     document.getElementById(modalId)?.remove();
 
     const currentShift = schoolShifts.find(s => s.id === shiftId) || schoolShifts[0];
-    const roster = (state.dutyRosters || []).find(r => r.schoolId === schoolId && r.shiftId === shiftId && Number(r.dayOfWeek) === Number(dayId));
+    const roster = (state.dutyRosters || []).find(r => 
+      r.schoolId === schoolId && 
+      r.shiftId === shiftId && 
+      Number(r.dayOfWeek) === Number(dayId) && 
+      Number(r.weekNumber || 1) === Number(weekNum)
+    ) || (Number(weekNum) === 1 ? (state.dutyRosters || []).find(r => r.schoolId === schoolId && r.shiftId === shiftId && Number(r.dayOfWeek) === Number(dayId)) : null);
 
     // Faqat ushbu smenaga/guruhga tegishli sinflar (mustasno qilinganlar bu yerda ko'rinmaydi)
     const shiftClassIds = new Set(currentShift?.classIds || []);
@@ -2665,7 +2710,7 @@ export function renderAdminAttendanceView(container, {
               ⭐
             </span>
             <div>
-              <h3 class="text-base font-bold text-slate-900">${escapeHtml(dayName)} Navbatchisi</h3>
+              <h3 class="text-base font-bold text-slate-900">${weekNum}-hafta • ${escapeHtml(dayName)} Navbatchisi</h3>
               <p class="text-xs text-slate-500">${escapeHtml(currentShift?.name || 'Guruh')}</p>
             </div>
           </div>
@@ -2764,7 +2809,11 @@ export function renderAdminAttendanceView(container, {
       const primaryClass = schoolClasses.find(c => c.id === primaryClassId);
       const backupClass = schoolClasses.find(c => c.id === backupClassId);
 
-      const shiftRosters = (state.dutyRosters || []).filter(r => r.schoolId === schoolId && r.shiftId === shiftId);
+      const shiftRosters = (state.dutyRosters || []).filter(r => 
+        r.schoolId === schoolId && 
+        r.shiftId === shiftId &&
+        Number(r.weekNumber || 1) === Number(weekNum)
+      );
       const valResult = validateDutyAssignment({
         dayOfWeek: dayId,
         primaryClass,
@@ -2780,7 +2829,12 @@ export function renderAdminAttendanceView(container, {
       }
 
       if (!state.dutyRosters) state.dutyRosters = [];
-      let targetRoster = (state.dutyRosters || []).find(r => r.schoolId === schoolId && r.shiftId === shiftId && Number(r.dayOfWeek) === Number(dayId));
+      let targetRoster = (state.dutyRosters || []).find(r => 
+        r.schoolId === schoolId && 
+        r.shiftId === shiftId && 
+        Number(r.dayOfWeek) === Number(dayId) &&
+        Number(r.weekNumber || 1) === Number(weekNum)
+      );
 
       if (targetRoster) {
         targetRoster.primaryTeacherName = primaryClass?.teacherName || '';
@@ -2791,12 +2845,14 @@ export function renderAdminAttendanceView(container, {
         targetRoster.backupTeacherPhone = backupClass?.teacherPhone || '';
         targetRoster.backupTeacherClassId = backupClass?.id || '';
         targetRoster.backupTeacherClassName = backupClass?.name || '';
+        targetRoster.weekNumber = Number(weekNum);
         targetRoster.updatedAt = new Date().toISOString();
       } else {
         targetRoster = {
-          id: `roster_${schoolId}_${shiftId}_day${dayId}`,
+          id: `roster_${schoolId}_${shiftId}_w${weekNum}_day${dayId}`,
           schoolId,
           shiftId,
+          weekNumber: Number(weekNum),
           dayOfWeek: Number(dayId),
           primaryTeacherName: primaryClass?.teacherName || '',
           primaryTeacherPhone: primaryClass?.teacherPhone || '',
@@ -2806,16 +2862,38 @@ export function renderAdminAttendanceView(container, {
           backupTeacherPhone: backupClass?.teacherPhone || '',
           backupTeacherClassId: backupClass?.id || '',
           backupTeacherClassName: backupClass?.name || '',
-          notes: `${dayName} uchun qo'lda tayinlangan`,
+          notes: `${weekNum}-hafta ${dayName} uchun qo'lda tayinlangan`,
           updatedAt: new Date().toISOString()
         };
         state.dutyRosters.push(targetRoster);
       }
 
       saveDutyRosterToFirestore(targetRoster).catch(() => {});
-      saveData(state);
 
-      showToast(`${dayName} navbatchilari yangilandi!`, 'success');
+      // Agar 1-hafta bo'lsa, legacy ID bilan ham saqlash
+      if (Number(weekNum) === 1) {
+        let legacyRoster = (state.dutyRosters || []).find(r => r.id === `roster_${schoolId}_${shiftId}_day${dayId}`);
+        if (!legacyRoster) {
+          legacyRoster = { ...targetRoster, id: `roster_${schoolId}_${shiftId}_day${dayId}` };
+          state.dutyRosters.push(legacyRoster);
+        } else {
+          Object.assign(legacyRoster, {
+            primaryTeacherName: targetRoster.primaryTeacherName,
+            primaryTeacherPhone: targetRoster.primaryTeacherPhone,
+            primaryTeacherClassId: targetRoster.primaryTeacherClassId,
+            primaryTeacherClassName: targetRoster.primaryTeacherClassName,
+            backupTeacherName: targetRoster.backupTeacherName,
+            backupTeacherPhone: targetRoster.backupTeacherPhone,
+            backupTeacherClassId: targetRoster.backupTeacherClassId,
+            backupTeacherClassName: targetRoster.backupTeacherClassName,
+            updatedAt: targetRoster.updatedAt
+          });
+        }
+        saveDutyRosterToFirestore(legacyRoster).catch(() => {});
+      }
+
+      saveData(state);
+      showToast(`${weekNum}-hafta ${dayName} navbatchilari saqlandi!`, 'success');
       close();
       render();
     });
@@ -3246,12 +3324,25 @@ export function renderAdminAttendanceView(container, {
       });
     }
 
+    const rosterWeekSelect = container.querySelector('#admin-roster-week-select');
+    if (rosterWeekSelect) {
+      rosterWeekSelect.addEventListener('change', (e) => {
+        selectedRosterWeekNumber = Number(e.target.value);
+        render();
+      });
+    }
+
     container.querySelector('#btn-auto-assign-roster-sec5')?.addEventListener('click', () => {
       const generated = generateOrderlyDutyRosters(schoolId, schoolShifts, schoolClasses);
       if (generated.length > 0) {
         if (!state.dutyRosters) state.dutyRosters = [];
         generated.forEach(newR => {
-          const exIdx = state.dutyRosters.findIndex(r => r.schoolId === schoolId && r.shiftId === newR.shiftId && Number(r.dayOfWeek) === Number(newR.dayOfWeek));
+          const exIdx = state.dutyRosters.findIndex(r => 
+            r.schoolId === schoolId && 
+            r.shiftId === newR.shiftId && 
+            Number(r.dayOfWeek) === Number(newR.dayOfWeek) &&
+            Number(r.weekNumber || 1) === Number(newR.weekNumber || 1)
+          );
           if (exIdx >= 0) {
             state.dutyRosters[exIdx] = newR;
           } else {
@@ -3260,7 +3351,7 @@ export function renderAdminAttendanceView(container, {
           saveDutyRosterToFirestore(newR).catch(() => {});
         });
         saveData(state);
-        showToast("Barcha guruhlar bo'yicha haftalik navbatchilik jadvali avtomatik adolatli taqsimlandi!", 'success');
+        showToast("Barcha guruhlar bo'yicha to'liq navbatchilik sikli adolatli ketma-ketlikda taqsimlandi! Har bir o'qituvchiga o'z navbatida navbatchilik biriktirildi.", 'success');
         render();
       }
     });
@@ -3270,7 +3361,8 @@ export function renderAdminAttendanceView(container, {
         const dayId = btn.getAttribute('data-day-id');
         const dayName = btn.getAttribute('data-day-name') || 'Kun';
         const shiftId = btn.getAttribute('data-shift-id') || selectedRosterShiftId;
-        openDutyDayEditModal(dayId, dayName, shiftId);
+        const weekNum = Number(btn.getAttribute('data-week-num') || selectedRosterWeekNumber || 1);
+        openDutyDayEditModal(dayId, dayName, shiftId, weekNum);
       });
     });
 

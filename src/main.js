@@ -51,7 +51,6 @@ import {
 import {
   testConnection,
   fetchAllData,
-  subscribeToDatabase,
   saveSchoolToFirestore,
   deleteSchoolFromFirestore,
   saveClassToFirestore,
@@ -821,17 +820,75 @@ function renderBottomBar() {
   return '';
 }
 
+// Foydalanuvchi hozir biror ma'lumot kiritayotganligini (input/textarea/select) yoki modal ochiqligini aniqlash
+function isUserInteractingOrModalOpen() {
+  try {
+    // 1. Aktiv fokusdagi element input, textarea yoki select bo'lsa
+    const active = document.activeElement;
+    if (active) {
+      const tag = active.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || active.isContentEditable) {
+        return true;
+      }
+    }
+
+    // 2. DOM da fokusda turgan biror input, textarea yoki select bormi
+    const focusedInput = document.querySelector('input:focus, textarea:focus, select:focus');
+    if (focusedInput) {
+      return true;
+    }
+
+    // 3. Foydalanuvchi biror matnli inputga qiymat kiritayotgan bo'lsa
+    const textInputs = document.querySelectorAll('input[type="text"], input[type="password"], input[type="number"], input[type="tel"], input[type="search"], textarea');
+    for (const inp of textInputs) {
+      if (inp.value && inp.value !== inp.defaultValue) {
+        return true;
+      }
+    }
+
+    // 4. Standart modal konteyneri (#modal-container) ichida element bormi
+    const modalContainer = document.getElementById('modal-container');
+    if (modalContainer && modalContainer.children.length > 0) {
+      return true;
+    }
+
+    // 5. document.body ga to'g'ridan-to'g'ri biriktirilgan barcha modallar va dialoglar
+    const modalBackdrops = document.querySelectorAll(
+      '[id$="-modal"], [id*="modal-backdrop"], [id*="-modal-container"], .modal-backdrop, [role="dialog"], #cred-modal-backdrop, #face-auth-modal, #pin-settings-modal, #about-modal-backdrop, #recovery-modal-backdrop, #logout-confirm-modal, #admin-student-reason-modal, #admin-group-modal, #admin-delete-group-modal, #choose-shift-modal, #admin-duty-day-edit-modal, #student-modal-backdrop, #class-modal-backdrop, #admin-form-modal-backdrop'
+    );
+    for (const el of modalBackdrops) {
+      if (el.id === 'initial-splash-loader' || el.id === 'app-background-wallpaper') continue;
+      if (el.offsetParent !== null || el.offsetHeight > 0 || el.offsetWidth > 0) {
+        return true;
+      }
+    }
+
+    // 6. Qoralama holatida saqlangan o'quvchi modali ochiqligi
+    const draftOpen = sessionStorage.getItem('maktab_student_draft_modal_open');
+    if (draftOpen) {
+      return true;
+    }
+  } catch (err) {
+    console.warn("isUserInteractingOrModalOpen tekshiruvida ogohlantirish:", err);
+  }
+
+  return false;
+}
+
 // Server bilan sinxronlash holati
 let isSyncingWithServer = false;
 
-// Server bilan yangilash funksiyasi (Sayt ochilganda/yangilanganda yoki tugma bosilganda server bilan ma'lumot almashiladi)
+// Server bilan yangilash funksiyasi
+// DIQQAT TALABI: Sayt o'z-o'zidan (oyna almashtirganda, fonda) yangilanib ketmaydi.
+// Faqat va faqat foydalanuvchi "Yangilash" tugmasini bosganda server bilan to'liq yangilanadi va interfeys qayta chiziladi.
 async function handleSyncWithServer(isSilent = false) {
+  const silent = isSilent === true; // Faqat aniq boolean true bo'lgandagina fon rejimida
   if (isSyncingWithServer) return false;
   isSyncingWithServer = true;
 
   // Headerdagi tugma holatini darhol yangilash
   const refreshBtn = document.getElementById('header-refresh-btn');
-  if (refreshBtn && !isSilent) {
+  if (refreshBtn && !silent) {
     refreshBtn.classList.add('opacity-70', 'pointer-events-none');
     const icon = refreshBtn.querySelector('svg');
     if (icon) icon.classList.add('animate-spin');
@@ -908,7 +965,7 @@ async function handleSyncWithServer(isSilent = false) {
         splashStatusText.textContent = "Server ma'lumotlari yangilandi";
       }
 
-      if (!isSilent) {
+      if (!silent) {
         showToast("Server bilan ma'lumotlar muvaffaqiyatli yangilandi!", 'success');
       }
       success = true;
@@ -916,18 +973,29 @@ async function handleSyncWithServer(isSilent = false) {
       if (splashStatusText) {
         splashStatusText.textContent = "Lokal ma'lumotlar yuklanmoqda...";
       }
-      if (!isSilent) {
+      if (!silent) {
         showToast("Server bilan bog'lanishda muammo bo'ldi. Internet aloqasini tekshiring.", 'error');
       }
     }
   } catch (err) {
     console.error("Server bilan yangilashda xatolik:", err);
-    if (!isSilent) {
+    if (!silent) {
       showToast("Server bilan bog'lanishda xatolik yuz berdi", 'error');
     }
   } finally {
     isSyncingWithServer = false;
-    renderApp();
+    if (refreshBtn && !silent) {
+      refreshBtn.classList.remove('opacity-70', 'pointer-events-none');
+      const icon = refreshBtn.querySelector('svg');
+      if (icon) icon.classList.remove('animate-spin');
+      const label = refreshBtn.querySelector('span');
+      if (label) label.textContent = 'Yangilash';
+    }
+
+    if (!silent) {
+      // Foydalanuvchi o'zi qo'lda "Yangilash" tugmasini bosgandagina interfeys yangilanadi
+      renderApp();
+    }
   }
   return success;
 }
@@ -2123,7 +2191,7 @@ function renderApp(initialTab = null) {
 
   // Attach Header listeners
   const headerRefreshBtn = document.getElementById('header-refresh-btn');
-  if (headerRefreshBtn) headerRefreshBtn.addEventListener('click', handleSyncWithServer);
+  if (headerRefreshBtn) headerRefreshBtn.addEventListener('click', () => handleSyncWithServer(false));
 
   const headerLogoutBtn = document.getElementById('header-logout-btn');
   if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', handleLogout);
@@ -2853,7 +2921,7 @@ function renderApp(initialTab = null) {
     renderDeveloper(viewContainer, {
       state: state.db,
       isLoading: state.isLoadingStudents,
-      onRefreshData: handleSyncWithServer,
+      onRefreshData: () => handleSyncWithServer(false),
       showToast,
       initialTab: initialTab || 'users',
       onAddAdmin: () => openAdminModal(),
@@ -2907,7 +2975,7 @@ function renderApp(initialTab = null) {
       state: state.db,
       currentSchool,
       isLoading: state.isLoadingStudents,
-      onRefreshData: handleSyncWithServer,
+      onRefreshData: () => handleSyncWithServer(false),
       onChangeCredentials: openChangeCredentialsModal,
       onAddClass: () => openClassModal(null, currentSchool.id),
       onEditClass: (classId) => openClassModal(classId, currentSchool.id),
@@ -3213,22 +3281,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   // 1. Dastlabki tezkor render
   renderApp();
 
-  let renderAppDebounceTimer = null;
-  const debouncedSafeRenderApp = () => {
-    if (renderAppDebounceTimer) clearTimeout(renderAppDebounceTimer);
-    renderAppDebounceTimer = setTimeout(() => {
-      // Agar foydalanuvchi hozir input/textarea/select yozayotgan bo'lsa yoki modal ochiq bo'lsa DOMni buzmaymiz
-      const activeTag = document.activeElement?.tagName;
-      const isTyping = activeTag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag);
-      const isModalOpen = Boolean(document.getElementById('modal-container')?.children.length);
-
-      if (isTyping || isModalOpen) {
-        return;
-      }
-      renderApp();
-    }, 280);
-  };
-
   // 2. Saytga yangi kirganda yoki brauzer sahifasi yangilanganda serverdan eng so'nggi ma'lumotlarni qabul qilish
   try {
     // Agar sessiya orqali kirilgan bo'lsa, lokal ma'lumotlar bilan dashboard holatini tiklash
@@ -3282,92 +3334,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Belgilangan vaqt tartibi tugagach, PowerPoint push slayd o'tishi yuz beradi
     triggerPptSlideTransition();
 
-    // Fondagi uzluksiz Real-time (jonli) sinxronizatsiya ulanishi
-    try {
-      subscribeToDatabase({
-        onSchoolsUpdate: (schools) => {
-          if (schools && schools.length > 0) {
-            state.db.schools = schools;
-            saveData(state.db);
-            debouncedSafeRenderApp();
-          }
-        },
-        onClassesUpdate: (classes) => {
-          if (classes && classes.length > 0) {
-            state.db.classes = classes;
-            if (state.currentUser?.role === 'teacher') {
-              const fresh = classes.find(c => c.id === state.currentUser.data.id);
-              if (fresh) state.currentUser.data = fresh;
-            }
-            saveData(state.db);
-            debouncedSafeRenderApp();
-          }
-        },
-        onStudentsUpdate: (students) => {
-          if (students && students.length > 0) {
-            students.forEach(st => {
-              if (st && isFemaleStudent(st) && st.gender !== 'Qiz') st.gender = 'Qiz';
-            });
-            state.db.students = students;
-            saveData(state.db);
-            debouncedSafeRenderApp();
-          }
-        },
-        onRecoveryRequestsUpdate: (requests) => {
-          state.db.recoveryRequests = requests || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onShiftsUpdate: (shifts) => {
-          state.db.shifts = shifts || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onDutyRostersUpdate: (rosters) => {
-          state.db.dutyRosters = rosters || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onAttendanceRecordsUpdate: (records) => {
-          state.db.attendanceRecords = records || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onDutyAbsencesUpdate: (absences) => {
-          state.db.dutyAbsences = absences || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onAdminNotificationsUpdate: (notifications) => {
-          state.db.adminNotifications = notifications || [];
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        },
-        onSystemUpdate: (sys) => {
-          if (sys?.developer) state.db.developer = sys.developer;
-          if (sys?.siteInfo) state.db.siteInfo = sys.siteInfo;
-          saveData(state.db);
-          debouncedSafeRenderApp();
-        }
-      });
-    } catch (subErr) {
-      console.warn("Real-time tinglovchi bildirishnomasi:", subErr);
-    }
-
-    // Brauzer orqali tabga qaytilsa, internet qayta ulansa yoki yangilanish berilsa server bilan ma'lumotlarni sinxronlash
-    window.addEventListener('online', () => {
-      handleSyncWithServer(true);
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        handleSyncWithServer(true);
-      }
-    });
-
-    window.addEventListener('focus', () => {
-      handleSyncWithServer(true);
-    });
+    // Foydalanuvchi talabiga binoan: Sayt o'z-o'zidan (boshqa oynaga o'tib qaytganda yoki fonda) yangilanmaydi.
+    // Ma'lumotlar faqat foydalanuvchi "Yangilash" tugmasini bosganda server bilan to'liq yangilanadi.
 
     // URL orqali yoki ID bilan tashrif buyurilgan holatni tekshirish
     try {

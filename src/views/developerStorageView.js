@@ -1,14 +1,23 @@
 /**
- * Dasturchi Paneli - Aqlli Xotira va Sig'im Tahlili (Smart Storage & Capacity Analytics)
- * Bepul 1 GB (1,024 MB) Cloud Firestore xotirasidan foydalanish holati,
- * ma'lumotlar hajmini baytma-bayt hisoblash va kelajakdagi sig'im prognozi.
+ * Dasturchi Paneli - Aqlli Xotira, Sig'im Tahlili va Gibrid Baza Boshqaruvi (Cloud Firestore 1 GB + Railway Server 8 GB)
+ * - Shu vaqtgacha saqlangan ma'lumotlar Cloud Firestore'da daxlsiz saqlanadi va doim o'qiladi
+ * - Yangi kiritiladigan ma'lumotlar Dasturchi tanloviga ko'ra Railway (8 GB), Firestore (1 GB) yoki Ikkalasiga (Gibrid) saqlanadi
  */
 
-// Bepul kvota chegarasi: 1 GB = 1024 MB = 1,073,741,824 Bayt
-export const TOTAL_FREE_STORAGE_BYTES = 1024 * 1024 * 1024;
+import {
+  getStorageTargetMode,
+  setStorageTargetMode,
+  getHybridStorageStatus,
+  syncAllDataToRailway,
+  downloadFullDatabaseBackup
+} from '../firebase.js';
+
+// Kvota chegaralari:
+export const TOTAL_FREE_STORAGE_BYTES = 1024 * 1024 * 1024; // 1 GB (Firestore)
+export const TOTAL_RAILWAY_STORAGE_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB (Railway)
 
 /**
- * Xotira va foydalanuvchilar sig'imini hisoblash
+ * Xotira va foydalanuvchilar sig'imini hisoblash (Firestore 1GB + Railway 8GB)
  */
 export function calculateStorageMetrics(state) {
   const safeState = state || {};
@@ -18,6 +27,9 @@ export function calculateStorageMetrics(state) {
   const requests = safeState.recoveryRequests || [];
   const developer = safeState.developer || {};
   const siteInfo = safeState.siteInfo || {};
+
+  const hybridStatus = getHybridStorageStatus();
+  const storageMode = hybridStatus.mode || getStorageTargetMode() || 'railway';
 
   // JSON hajmini UTF-8 baytlarida aniq o'lchash
   const getBytes = (obj) => {
@@ -35,7 +47,15 @@ export function calculateStorageMetrics(state) {
   const systemBytes = getBytes({ developer, siteInfo });
 
   const totalUsedBytes = studentsBytes + classesBytes + schoolsBytes + requestsBytes + systemBytes;
-  const remainingBytes = Math.max(0, TOTAL_FREE_STORAGE_BYTES - totalUsedBytes);
+
+  // Tanlangan rejimga qarab faol sig'im (Railway = 8 GB, Firestore = 1 GB, Both = 9 GB)
+  const activeCapacityBytes = storageMode === 'railway'
+    ? TOTAL_RAILWAY_STORAGE_BYTES
+    : storageMode === 'both'
+      ? (TOTAL_RAILWAY_STORAGE_BYTES + TOTAL_FREE_STORAGE_BYTES)
+      : TOTAL_FREE_STORAGE_BYTES;
+
+  const remainingBytes = Math.max(0, activeCapacityBytes - totalUsedBytes);
 
   const totalSchools = schools.length;
   const totalClasses = classes.length;
@@ -57,24 +77,34 @@ export function calculateStorageMetrics(state) {
 
   // Yana qancha foydalanuvchi qo'shish imkoni borligi (Prognoz)
   const maxAdditionalStudents = Math.floor(remainingBytes / avgStudentBytes);
-  const maxAdditionalClasses = Math.floor(maxAdditionalStudents / 30); // 30 o'quvchili o'rtacha sinflar
-  const maxAdditionalSchools = Math.floor(maxAdditionalStudents / 500); // 500 o'quvchili o'rtacha maktablar
+  const maxAdditionalClasses = Math.floor(maxAdditionalStudents / 30);
+  const maxAdditionalSchools = Math.floor(maxAdditionalStudents / 500);
 
   // Foizlar
-  const usedPercent = ((totalUsedBytes / TOTAL_FREE_STORAGE_BYTES) * 100);
+  const usedPercent = ((totalUsedBytes / activeCapacityBytes) * 100);
   const freePercent = Math.max(0, 100 - usedPercent);
 
   // MB va KB ko'rinishlari
   const usedMB = (totalUsedBytes / (1024 * 1024)).toFixed(2);
   const usedKB = (totalUsedBytes / 1024).toFixed(1);
   const freeMB = (remainingBytes / (1024 * 1024)).toFixed(1);
-  const totalMB = (TOTAL_FREE_STORAGE_BYTES / (1024 * 1024)).toFixed(0);
+  const totalMB = (activeCapacityBytes / (1024 * 1024)).toFixed(0);
+  const totalGB = (activeCapacityBytes / (1024 * 1024 * 1024)).toFixed(0);
 
   // Rasmlar tozalangani hisobiga tejalgan taxminiy hajm (~450 KB har bir o'quvchi rasmi)
   const savedPhotoEstimateBytes = totalStudents * 450 * 1024;
   const savedPhotoMB = (savedPhotoEstimateBytes / (1024 * 1024)).toFixed(1);
 
+  const railwayUsedKB = ((hybridStatus.railwayUsedBytes || 0) / 1024).toFixed(1);
+  const railwayUsedMB = ((hybridStatus.railwayUsedBytes || 0) / (1024 * 1024)).toFixed(2);
+
   return {
+    storageMode,
+    hybridStatus,
+    activeCapacityBytes,
+    totalGB,
+    railwayUsedKB,
+    railwayUsedMB,
     totalSchools,
     totalClasses,
     totalStudents,
@@ -104,12 +134,239 @@ export function calculateStorageMetrics(state) {
 }
 
 /**
+ * Dasturchi Sozlamalari va Xotira bo'limi uchun:
+ * Ma'lumotlarni Saqlash Manbasini Tanlash (Cloud Firestore vs Railway 8GB) Boshqaruv Kartasi
+ */
+export function renderStorageEngineSelectorCard(metrics) {
+  const mode = metrics.storageMode || 'railway';
+  const hs = metrics.hybridStatus || {};
+
+  const modeBadge = mode === 'railway'
+    ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-purple-100 text-purple-800 border border-purple-300">
+         <span class="w-2 h-2 rounded-full bg-purple-600 animate-ping"></span>
+         <span>Faol: Railway Server (8 GB)</span>
+       </span>`
+    : mode === 'both'
+      ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-300">
+           <span class="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></span>
+           <span>Faol: Gibrid (Railway 8GB + Firestore 1GB)</span>
+         </span>`
+      : `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+           <span class="w-2 h-2 rounded-full bg-emerald-600 animate-ping"></span>
+           <span>Faol: Cloud Firestore (1 GB)</span>
+         </span>`;
+
+  return `
+    <div class="bg-white rounded-2xl border-2 border-indigo-200/90 shadow-sm overflow-hidden">
+      <!-- Yuqori Sarlavha -->
+      <div class="px-5 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-sm sm:text-base font-black text-white">Ma'lumotlarni Saqlash Serverini Tanlash (Baza Boshqaruvi)</h2>
+              <span class="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
+                0% Yo'qotishsiz Gibrid Tizim
+              </span>
+            </div>
+            <p class="text-xs text-slate-300 mt-0.5">
+              Eski ma'lumotlar Firestore'da daxlsiz saqlanib o'qilaveradi. Yangi kiritiladigan ma'lumotlar qayerga yozilishini tanlang:
+            </p>
+          </div>
+        </div>
+        <div class="shrink-0">
+          ${modeBadge}
+        </div>
+      </div>
+
+      <!-- 3 ta Saqlash Rejimi Tanlash Kartalari -->
+      <div class="p-5 sm:p-6 space-y-5">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          
+          <!-- 1-Variant: RAILWAY SERVER (8 GB) - Asosiy -->
+          <button
+            type="button"
+            data-storage-mode="railway"
+            class="storage-target-mode-btn text-left p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+              mode === 'railway'
+                ? 'bg-purple-50/90 border-purple-600 ring-2 ring-purple-500/20 shadow-md'
+                : 'bg-white border-slate-200 hover:border-purple-300 hover:bg-purple-50/30'
+            }"
+          >
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                  mode === 'railway' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-800'
+                }">
+                  🚂 Railway Server (8 GB)
+                </span>
+                <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  mode === 'railway' ? 'border-purple-600 bg-purple-600 text-white' : 'border-slate-300'
+                }">
+                  ${mode === 'railway' ? '✓' : ''}
+                </span>
+              </div>
+              <div class="font-bold text-slate-900 text-sm">
+                Yangi ma'lumotlar — Railway'ga
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                Shu vaqtgacha kiritilgan ma'lumotlar <strong>Firestore'dan o'qiladi</strong> (o'chib ketmaydi), endi kiritiladigan barcha yangi ma'lumotlar esa <strong>Railway 8 GB</strong> serverga saqlanadi.
+              </p>
+            </div>
+            <div class="pt-2 border-t border-purple-200/60 flex items-center justify-between text-[11px] font-semibold">
+              <span class="text-purple-800">Sig'im: <strong>8,192 MB (8 GB)</strong></span>
+              <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-900 font-mono">${hs.totalRailwayRecords || 0} yozuv</span>
+            </div>
+          </button>
+
+          <!-- 2-Variant: CLOUD FIRESTORE (1 GB) -->
+          <button
+            type="button"
+            data-storage-mode="firestore"
+            class="storage-target-mode-btn text-left p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+              mode === 'firestore'
+                ? 'bg-emerald-50/90 border-emerald-600 ring-2 ring-emerald-500/20 shadow-md'
+                : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30'
+            }"
+          >
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                  mode === 'firestore' ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-800'
+                }">
+                  🔥 Cloud Firestore (1 GB)
+                </span>
+                <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  mode === 'firestore' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
+                }">
+                  ${mode === 'firestore' ? '✓' : ''}
+                </span>
+              </div>
+              <div class="font-bold text-slate-900 text-sm">
+                Yangi ma'lumotlar — Firestore'ga
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                Barcha yangi qo'shiladigan maktab, sinf, o'quvchi va davomat ma'lumotlari to'g'ridan-to'g'ri <strong>Google Cloud Firestore</strong> bazasiga saqlanadi.
+              </p>
+            </div>
+            <div class="pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[11px] font-semibold">
+              <span class="text-emerald-800">Sig'im: <strong>1,024 MB (1 GB)</strong></span>
+              <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-mono">${hs.totalFirestoreRecords || 0} yozuv</span>
+            </div>
+          </button>
+
+          <!-- 3-Variant: GIBRID (IKKALASIGA BARAVAR - RAILWAY + FIRESTORE) -->
+          <button
+            type="button"
+            data-storage-mode="both"
+            class="storage-target-mode-btn text-left p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+              mode === 'both'
+                ? 'bg-indigo-50/90 border-indigo-600 ring-2 ring-indigo-500/20 shadow-md'
+                : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30'
+            }"
+          >
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                  mode === 'both' ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800'
+                }">
+                  ⚡ Ikkalasiga Baravar (Gibrid)
+                </span>
+                <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  mode === 'both' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'
+                }">
+                  ${mode === 'both' ? '✓' : ''}
+                </span>
+              </div>
+              <div class="font-bold text-slate-900 text-sm">
+                Railway (8GB) + Firestore (1GB)
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                Qo'shilgan har bir yangi ma'lumot bir vaqtning o'zida <strong>ham Railway serveriga, ham Cloud Firestore'ga</strong> ikki nusxada parallel saqlanadi.
+              </p>
+            </div>
+            <div class="pt-2 border-t border-indigo-200/60 flex items-center justify-between text-[11px] font-semibold">
+              <span class="text-indigo-800">Qo'shma himoya: <strong>100% Dual-Write</strong></span>
+              <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 font-mono">2x Zaxira</span>
+            </div>
+          </button>
+
+        </div>
+
+        <!-- Ikkala server holati va 1-tugmali ko'chirish / zaxira amallari -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 text-xs">
+            <div class="p-2.5 rounded-xl bg-white border border-slate-200/80">
+              <div class="text-[11px] text-slate-500 font-medium">Firestore Bazada:</div>
+              <div class="font-black text-emerald-700 text-sm mt-0.5">${hs.totalFirestoreRecords || 0} ta yozuv</div>
+              <div class="text-[10px] text-slate-400">${hs.firestoreCounts?.students || 0} o'quvchi • ${hs.firestoreCounts?.classes || 0} sinf</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-white border border-slate-200/80">
+              <div class="text-[11px] text-slate-500 font-medium">Railway (8 GB) Bazada:</div>
+              <div class="font-black text-purple-700 text-sm mt-0.5">${hs.totalRailwayRecords || 0} ta yozuv</div>
+              <div class="text-[10px] text-slate-400">${hs.railwayCounts?.students || 0} o'quvchi • ${metrics.railwayUsedKB} KB</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-white border border-slate-200/80">
+              <div class="text-[11px] text-slate-500 font-medium">O'qish (Read) Rejimi:</div>
+              <div class="font-bold text-slate-900 text-xs mt-0.5">Firestore + Railway</div>
+              <div class="text-[10px] text-emerald-600 font-semibold">✓ Barchasi birlashgan</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-white border border-slate-200/80">
+              <div class="text-[11px] text-slate-500 font-medium">Yozish (Write) Manbasi:</div>
+              <div class="font-bold text-indigo-700 text-xs mt-0.5">
+                ${mode === 'railway' ? 'Railway Server (8 GB)' : mode === 'both' ? 'Railway + Firestore' : 'Cloud Firestore (1 GB)'}
+              </div>
+              <div class="text-[10px] text-slate-400">Dasturchi tanlovi</div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="sync-firestore-to-railway-btn"
+              class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              title="Firestore'dagi barcha ma'lumotlarni o'chirmasdan Railway bazasiga ham nusxalab qo'yish"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+              </svg>
+              <span>Firestore'dan Railway'ga nusxalash</span>
+            </button>
+
+            <button
+              type="button"
+              id="download-full-backup-json-btn"
+              class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              title="Barcha ma'lumotlarni kompyuterga .JSON zaxira fayli sifatida yuklab olish"
+            >
+              <svg class="w-4 h-4 shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              <span>To'liq Zaxira (.JSON)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Dasturchi boshqaruv kartasi ostida ko'rinuvchi Aqlli Mini Vidjet (Glassmorphic Widget)
  */
-export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
-  const percentDisplay = metrics.usedPercent < 0.01 
-    ? (metrics.usedPercent < 0.001 ? "< 0.001%" : metrics.usedPercent.toFixed(3) + "%") 
-    : metrics.usedPercent.toFixed(2) + "%";
+export function renderStorageMiniWidget(metrics) {
+  const mode = metrics.storageMode || 'railway';
+  const hs = metrics.hybridStatus || {};
+
+  const modeTitle = mode === 'railway'
+    ? 'Railway Server (8 GB) + Firestore O\'qish'
+    : mode === 'both'
+      ? 'Gibrid: Railway (8 GB) + Firestore (1 GB)'
+      : 'Cloud Firestore (1 GB Bepul Xotira)';
 
   return `
     <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/25 p-3.5 sm:p-4 text-white shadow-lg shadow-indigo-950/30">
@@ -117,7 +374,7 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
       <div class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-indigo-500/15 blur-2xl pointer-events-none"></div>
       <div class="absolute -left-10 -bottom-10 w-40 h-40 rounded-full bg-emerald-500/15 blur-2xl pointer-events-none"></div>
       
-      <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+      <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
         
         <!-- Chap: Diagramma va ko'rsatkichlar -->
         <div class="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -125,7 +382,6 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
           <!-- Radial Progress Gauge (Mini) -->
           <div class="relative w-12 h-12 sm:w-14 sm:h-14 shrink-0 flex items-center justify-center">
             <svg class="w-full h-full -rotate-90 transform" viewBox="0 0 36 36">
-              <!-- Fon doirasi -->
               <path
                 class="text-white/10"
                 stroke-width="3.5"
@@ -133,10 +389,9 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
                 fill="none"
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
               />
-              <!-- Bandlik chizig'i -->
               <path
-                class="text-emerald-400 transition-all duration-1000 ease-out"
-                stroke-dasharray="${Math.max(1, Math.min(100, metrics.usedPercent * 10))}, 100"
+                class="${mode === 'railway' ? 'text-purple-400' : 'text-emerald-400'} transition-all duration-1000 ease-out"
+                stroke-dasharray="${Math.max(2, Math.min(100, metrics.usedPercent * 10))}, 100"
                 stroke-width="3.5"
                 stroke-linecap="round"
                 stroke="currentColor"
@@ -145,17 +400,21 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
               />
             </svg>
             <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span class="text-[10px] sm:text-[11px] font-black text-emerald-300 leading-none">1GB</span>
-              <span class="text-[8px] text-slate-300 font-medium scale-90">Free</span>
+              <span class="text-[10px] sm:text-[11px] font-black ${mode === 'railway' ? 'text-purple-300' : 'text-emerald-300'} leading-none">${metrics.totalGB}GB</span>
+              <span class="text-[8px] text-slate-300 font-medium scale-90">${mode === 'railway' ? 'Railway' : mode === 'both' ? 'Gibrid' : 'Cloud'}</span>
             </div>
           </div>
 
           <!-- Matnli ko'rsatkichlar -->
           <div class="min-w-0 space-y-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10.5px] font-bold">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>1 GB Bepul Xotira</span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md ${
+                mode === 'railway'
+                  ? 'bg-purple-500/25 text-purple-200 border border-purple-400/40'
+                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+              } text-[10.5px] font-bold">
+                <span class="w-1.5 h-1.5 rounded-full ${mode === 'railway' ? 'bg-purple-400' : 'bg-emerald-400'} animate-pulse"></span>
+                <span>Saqlash manbasi: ${modeTitle}</span>
               </span>
               <span class="text-xs font-semibold text-slate-200">
                 Band: <strong class="text-white font-bold">${metrics.usedMB} MB</strong> / Bo'sh: <strong class="text-emerald-300 font-bold">${metrics.freeMB} MB</strong>
@@ -163,24 +422,61 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
             </div>
             
             <p class="text-[11px] sm:text-xs text-slate-300 leading-relaxed truncate sm:whitespace-normal">
-              Foydalanuvchilar: <strong class="text-white">${metrics.totalAllUsers} ta</strong> (${metrics.totalStudents} o'quvchi) • 
-              Yana sig'imi: <strong class="text-emerald-300">+${metrics.maxAdditionalStudents.toLocaleString()} ta</strong> o'quvchi qo'shish mumkin
+              Firestore'da: <strong class="text-emerald-300">${hs.totalFirestoreRecords || 0} yozuv</strong> • 
+              Railway (8GB) da: <strong class="text-purple-300">${hs.totalRailwayRecords || 0} yozuv</strong> • 
+              Yana sig'imi: <strong class="text-white">+${metrics.maxAdditionalStudents.toLocaleString()} o'quvchi</strong>
             </p>
           </div>
         </div>
 
-        <!-- O'ng: Tugma -->
-        <div class="flex items-center gap-2 shrink-0 self-end md:self-auto">
+        <!-- O'ng: Tezkor Baza Tanlash Tugmalari + Batafsil Oynani Ochish -->
+        <div class="flex items-center gap-2 flex-wrap shrink-0 self-end lg:self-auto">
+          <div class="inline-flex items-center p-1 rounded-xl bg-black/30 border border-white/15">
+            <button
+              type="button"
+              data-storage-mode="railway"
+              class="storage-target-mode-btn px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                mode === 'railway'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }"
+              title="Yangi ma'lumotlarni Railway (8 GB) serverga saqlash (Eskilari Firestore'da qoladi)"
+            >
+              🚂 Railway 8GB
+            </button>
+            <button
+              type="button"
+              data-storage-mode="firestore"
+              class="storage-target-mode-btn px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                mode === 'firestore'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }"
+              title="Yangi ma'lumotlarni Cloud Firestore (1 GB) bazasiga saqlash"
+            >
+              🔥 Firestore 1GB
+            </button>
+            <button
+              type="button"
+              data-storage-mode="both"
+              class="storage-target-mode-btn px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                mode === 'both'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }"
+              title="Ikkala bazaga ham baravar saqlash (Railway + Firestore)"
+            >
+              ⚡ Ikkalasi
+            </button>
+          </div>
+
           <button 
             type="button" 
             id="open-storage-analytics-btn"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer shadow-xs"
-            title="1 GB bepul xotira va sig'im tahlilini ochish"
+            title="Server va Xotira boshqaruvini ochish"
           >
-            <svg class="w-3.5 h-3.5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-            </svg>
-            <span>Aqlli Xotira & Diagramma</span>
+            <span>Baza & Xotira</span>
             <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
@@ -193,24 +489,22 @@ export function renderStorageMiniWidget(metrics, onOpenDetailedTab) {
 }
 
 /**
- * To'liq "Aqlli Xotira & Sig'im" (Smart Storage & Capacity) Tahlil Ko'rinishi
+ * To'liq "Aqlli Xotira & Server Boshqaruvi" (Smart Storage & Railway/Firestore Switcher) Ko'rinishi
  */
-export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
+export function renderDetailedStorageView(metrics) {
   const percentDisplay = metrics.usedPercent < 0.01 
     ? (metrics.usedPercent < 0.001 ? "< 0.001%" : metrics.usedPercent.toFixed(3) + "%") 
     : metrics.usedPercent.toFixed(2) + "%";
 
-  // Segmentli stacked bar uchun foizlar (jami ishlatilgan qismdan)
-  const safeUsed = Math.max(1, metrics.totalUsedBytes);
-  const studentsBarPct = Math.max(2, Math.round((metrics.studentsBytes / safeUsed) * 100));
-  const classesBarPct = Math.max(1, Math.round((metrics.classesBytes / safeUsed) * 100));
-  const schoolsBarPct = Math.max(1, Math.round((metrics.schoolsBytes / safeUsed) * 100));
-  const systemBarPct = Math.max(1, 100 - (studentsBarPct + classesBarPct + schoolsBarPct));
+  const mode = metrics.storageMode || 'railway';
 
   return `
     <div class="space-y-6 animate-fade-in">
+
+      <!-- 1. DASTURCHI UCHUN BAZA TANLASH VA KO'CHIRISH PANELI (Railway 8GB vs Firestore 1GB) -->
+      ${renderStorageEngineSelectorCard(metrics)}
       
-      <!-- Yuqori Asosiy Karta: 1 GB Bepul Cloud Firestore Holati -->
+      <!-- 2. Yuqori Asosiy Karta: Xotira va Kvota Holati -->
       <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-[#0B1120] to-[#111836] border border-indigo-500/30 p-5 sm:p-7 text-white shadow-2xl">
         <!-- Bezak nurlari -->
         <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-indigo-600/20 blur-3xl pointer-events-none"></div>
@@ -224,7 +518,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
             <!-- SVG Donut Chart -->
             <div class="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0 flex items-center justify-center">
               <svg class="w-full h-full -rotate-90 transform" viewBox="0 0 36 36">
-                <!-- Fon aylanasi (Bo'sh xotira - kulrang/moviy) -->
                 <path
                   class="text-indigo-950/80"
                   stroke-width="3.2"
@@ -232,7 +525,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
-                <!-- Band qilingan qism (Emerald neon) -->
                 <path
                   class="text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)] transition-all duration-1000 ease-out"
                   stroke-dasharray="${Math.max(2, Math.min(100, metrics.usedPercent * 10))}, 100"
@@ -243,9 +535,8 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
               </svg>
-              <!-- Markaziy Matn -->
               <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-2">
-                <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Band</span>
+                <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">${metrics.totalGB} GB</span>
                 <span class="text-base sm:text-lg font-black text-emerald-300 leading-tight">${percentDisplay}</span>
                 <span class="text-[9px] text-slate-400 font-mono">${metrics.usedMB} MB</span>
               </div>
@@ -255,7 +546,7 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
             <div class="space-y-1.5 min-w-0">
               <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-xs font-bold">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span>Bepul 1 GB Xotira (Cloud Firestore)</span>
+                <span>${mode === 'railway' ? 'Railway 8 GB Server + Firestore (1 GB)' : mode === 'both' ? '9 GB Qo\'shma Gibrid Xotira' : '1 GB Cloud Firestore Xotirasi'}</span>
               </div>
               
               <h1 class="text-lg sm:text-2xl font-black text-white tracking-tight">
@@ -263,12 +554,11 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </h1>
               
               <p class="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-                Jami bepul ajratilgan <strong class="text-white">1,024 MB (1.00 GB)</strong> xotiradan hozirda atigi 
+                Jami ajratilgan <strong class="text-white">${Number(metrics.totalMB).toLocaleString()} MB (${metrics.totalGB} GB)</strong> xotiradan hozirda atigi 
                 <strong class="text-emerald-300">${metrics.usedMB} MB</strong> band qilingan. 
-                Sizda hali <strong class="text-white font-bold">${metrics.freeMB} MB</strong> bo'sh joy mavjud!
+                Sizda hali <strong class="text-white font-bold">${Number(metrics.freeMB).toLocaleString()} MB</strong> bo'sh joy mavjud!
               </p>
 
-              <!-- Xavfsizlik darajasi ko'rsatkichi -->
               <div class="pt-1 flex items-center gap-2">
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-[11px] text-emerald-300 font-semibold">
                   <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -298,29 +588,25 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
 
         </div>
 
-        <!-- Segmented Stacked Progress Bar (Rangli Xotira Chizig'i) -->
+        <!-- Segmented Stacked Progress Bar -->
         <div class="mt-6 pt-5 border-t border-slate-800/80 space-y-2.5">
           <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
-            <span>1 GB Bepul kvota taqsimoti:</span>
-            <span>Jami: <strong>1,024 MB</strong></span>
+            <span>Faol server kvotasi taqsimoti:</span>
+            <span>Jami: <strong>${Number(metrics.totalMB).toLocaleString()} MB (${metrics.totalGB} GB)</strong></span>
           </div>
 
-          <!-- Asosiy 1 GB chizig'i -->
           <div class="w-full h-4 rounded-full bg-slate-800/90 overflow-hidden p-0.5 border border-slate-700/60 flex gap-0.5 shadow-inner">
-            <!-- Band qism (Kichik, lekin ko'rinadigan qilib kamida 2% kenglikda) -->
             <div 
               class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500 transition-all duration-700 relative group cursor-pointer"
               style="width: ${Math.max(2, Math.min(100, metrics.usedPercent * 10))}%;"
               title="Band: ${metrics.usedMB} MB (${percentDisplay})"
             ></div>
-            <!-- Bo'sh qism -->
             <div 
               class="h-full rounded-full bg-indigo-950/60 flex-1 relative group cursor-pointer"
               title="Bo'sh: ${metrics.freeMB} MB (${metrics.freePercent.toFixed(2)}%)"
             ></div>
           </div>
 
-          <!-- Izoh belgilar (Legend) -->
           <div class="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-2 pt-1">
             <div class="flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
@@ -328,7 +614,7 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
             </div>
             <div class="flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-indigo-950 border border-indigo-400/40"></span>
-              <span>Bo'sh bepul xotira: <strong class="text-emerald-300">${metrics.freeMB} MB</strong> (${metrics.freePercent.toFixed(2)}%)</span>
+              <span>Bo'sh xotira: <strong class="text-emerald-300">${Number(metrics.freeMB).toLocaleString()} MB</strong> (${metrics.freePercent.toFixed(2)}%)</span>
             </div>
           </div>
         </div>
@@ -358,10 +644,10 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
           </div>
         </div>
 
-        <!-- 2-Karta: Bepul Xotira Zaxirasi -->
+        <!-- 2-Karta: Bo'sh Xotira Zaxirasi -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500">Bo'sh Bepul Xotira</span>
+            <span class="text-xs font-semibold text-slate-500">Bo'sh Server Xotirasi</span>
             <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
@@ -369,16 +655,16 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
             </div>
           </div>
           <div class="text-2xl font-black text-emerald-600 leading-tight">
-            ${metrics.freeMB} <span class="text-xs font-semibold text-slate-500">MB bo'sh</span>
+            ${Number(metrics.freeMB).toLocaleString()} <span class="text-xs font-semibold text-slate-500">MB bo'sh</span>
           </div>
           <div class="text-[11px] text-slate-500 space-y-0.5 pt-1 border-t border-slate-100">
-            <div>• Jami kvota: <strong class="text-slate-800">1,024 MB (1 GB)</strong></div>
+            <div>• Jami kvota: <strong class="text-slate-800">${Number(metrics.totalMB).toLocaleString()} MB (${metrics.totalGB} GB)</strong></div>
             <div>• Band qilingan: <strong class="text-slate-800">${metrics.usedMB} MB</strong> (${percentDisplay})</div>
             <div>• Bo'sh qolgan: <strong class="text-emerald-700 font-bold">${metrics.freePercent.toFixed(2)}%</strong></div>
           </div>
         </div>
 
-        <!-- 3-Karta: Yana Qancha O'quvchi Qo'shish Mumkin (Sig'im Prognozi) -->
+        <!-- 3-Karta: Yana Qancha O'quvchi Qo'shish Mumkin -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200/90 shadow-xs space-y-2 bg-gradient-to-b from-white to-emerald-50/30">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-emerald-900">Yana Qo'shish Imkoni</span>
@@ -395,11 +681,11 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
           <div class="text-[11px] text-slate-600 space-y-0.5 pt-1 border-t border-emerald-100">
             <div>• Yana <strong class="text-slate-900 font-bold">~${metrics.maxAdditionalClasses.toLocaleString()}</strong> ta sinf (30 tadan)</div>
             <div>• Yana <strong class="text-slate-900 font-bold">~${metrics.maxAdditionalSchools.toLocaleString()}</strong> ta maktab (500 tadan)</div>
-            <div class="text-emerald-700 font-semibold">• Bepul tarif uchun bemalol yetarli!</div>
+            <div class="text-emerald-700 font-semibold">• Railway 8 GB bilan cheksiz imkoniyat!</div>
           </div>
         </div>
 
-        <!-- 4-Karta: Tejamkorlik Ko'rsatkichi (Suratlarsiz toza matn) -->
+        <!-- 4-Karta: Tejamkorlik Ko'rsatkichi -->
         <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-semibold text-slate-500">1 Ta O'quvchi Hajmi</span>
@@ -435,12 +721,10 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
               <h2 class="text-sm font-bold text-slate-900">Ma'lumotlar Bo'yicha Xotira Taqsimoti</h2>
             </div>
-            <span class="text-[11px] font-mono text-slate-500">Firestore JSON</span>
+            <span class="text-[11px] font-mono text-slate-500">Firestore + Railway JSON</span>
           </div>
 
           <div class="divide-y divide-slate-100 text-xs">
-            
-            <!-- O'quvchilar -->
             <div class="p-4 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
               <div class="flex items-center gap-3">
                 <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></div>
@@ -455,7 +739,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
             </div>
 
-            <!-- Sinflar -->
             <div class="p-4 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
               <div class="flex items-center gap-3">
                 <div class="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></div>
@@ -470,7 +753,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
             </div>
 
-            <!-- Maktablar -->
             <div class="p-4 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
               <div class="flex items-center gap-3">
                 <div class="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0"></div>
@@ -485,7 +767,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
             </div>
 
-            <!-- Tiklash so'rovlari va Tizim -->
             <div class="p-4 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
               <div class="flex items-center gap-3">
                 <div class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></div>
@@ -500,7 +781,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
             </div>
 
-            <!-- Jami qator -->
             <div class="p-4 bg-slate-50 flex items-center justify-between font-bold">
               <div class="text-slate-900">Jami Band Qilingan Xotira:</div>
               <div class="text-right font-mono text-indigo-700">
@@ -508,11 +788,10 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
                 <span class="text-[11px] font-normal text-slate-500 ml-1">(${percentDisplay})</span>
               </div>
             </div>
-
           </div>
         </div>
 
-        <!-- O'ng: Interaktiv Sig'im Kalkulyatori (Capacity Simulator) -->
+        <!-- O'ng: Interaktiv Sig'im Kalkulyatori -->
         <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 sm:p-6 space-y-4">
           <div class="flex items-center gap-2.5 pb-2 border-b border-slate-100">
             <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -547,7 +826,6 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               </div>
             </div>
 
-            <!-- Tezkor tugmachalar -->
             <div class="flex items-center gap-1.5 flex-wrap">
               <span class="text-[11px] text-slate-400">Tezkor:</span>
               <button type="button" class="calc-preset-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-mono text-[11px] font-semibold text-slate-700 cursor-pointer" data-val="500">+500</button>
@@ -557,42 +835,25 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
               <button type="button" class="calc-preset-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-mono text-[11px] font-semibold text-slate-700 cursor-pointer" data-val="50000">+50,000</button>
             </div>
 
-            <!-- Kalkulyator Natijasi Bloki -->
             <div id="calc-result-box" class="p-4 rounded-xl bg-gradient-to-br from-emerald-50/80 to-teal-50/40 border border-emerald-200/80 space-y-2">
               <div class="font-bold text-emerald-950 flex items-center justify-between">
                 <span>Prognoz Hisob-kitobi:</span>
                 <span id="calc-estimated-size" class="font-mono text-emerald-800 text-sm">~1.85 MB</span>
               </div>
               <p id="calc-result-text" class="text-[11.5px] leading-relaxed text-emerald-900">
-                1,000 ta qo'shimcha o'quvchi Firestore'da taxminan <strong class="font-mono">1.85 MB</strong> xotira egallaydi. 
-                Bu bepul 1 GB (1,024 MB) kvotaning atigi <strong class="font-mono">0.18%</strong> qismini tashkil qiladi.
+                1,000 ta qo'shimcha o'quvchi taxminan <strong class="font-mono">1.85 MB</strong> xotira egallaydi. 
+                Railway 8 GB (8,192 MB) serverida bu atigi <strong class="font-mono">0.02%</strong> joyni band qiladi.
               </p>
               <div class="pt-1 text-[11px] font-semibold text-emerald-700 flex items-center gap-1.5">
                 <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
                 </svg>
-                <span>Xulosa: Bepul tarifingiz ushbu yuklamani bemalol ko'tara oladi!</span>
+                <span>Xulosa: Gibrid (Firestore + Railway 8 GB) tizimingiz ushbu yuklamani bemalol ko'tara oladi!</span>
               </div>
             </div>
-
           </div>
         </div>
 
-      </div>
-
-      <!-- Xulosa va Tavsiyalar Kartasi -->
-      <div class="p-5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 text-xs text-indigo-950 space-y-3">
-        <div class="flex items-center gap-2">
-          <svg class="w-5 h-5 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <span class="font-bold text-sm">Dasturchi uchun Xotira va Xavfsizlik bo'yicha Muhim Tavsiyalar:</span>
-        </div>
-        <ul class="space-y-1.5 text-[11.5px] text-slate-700 list-disc list-inside leading-relaxed">
-          <li><strong>Fotosuratlarsiz toza ma'lumotlar:</strong> Tizimdan rasmlar yuklash olib tashlanganligi sababli xotira 99% tejalmoqda va o'quvchilar soni yarim milliondan oshganda ham 1 GB bepul kvotadan chiqib ketmaydi.</li>
-          <li><strong>Tezkor kesh va oflayn ishlash:</strong> Ma'lumotlar kichik hajmda bo'lgani sababli brauzer sahifasi bir zumda yuklanadi va internet sekin bo'lganda ham xotiradan lahzada ochiladi.</li>
-          <li><strong>Eksport imkoniyati:</strong> O'quvchilar ro'yxatini istalgan paytda Excel (.xlsx) va PDF formatida yuklab olib, zaxira nusxa sifatida saqlashingiz mumkin.</li>
-        </ul>
       </div>
 
     </div>
@@ -600,9 +861,65 @@ export function renderDetailedStorageView(metrics, onRefreshData, showToast) {
 }
 
 /**
- * Kalkulyator interaktivligini ulash
+ * Kalkulyator hamda Baza Tanlash (Railway / Firestore / Both) hodisalarini ulash
  */
-export function attachStorageCalculatorEvents(container, avgStudentBytes) {
+export function attachStorageCalculatorEvents(container, avgStudentBytes, options = {}) {
+  const { state, onRefreshData, onModeChanged, showToast } = options;
+
+  // 1. Saqlash manbasi tugmalari (Railway 8GB | Firestore 1GB | Both)
+  const modeBtns = container.querySelectorAll('.storage-target-mode-btn');
+  modeBtns.forEach(btn => {
+    btn.onclick = async () => {
+      const targetMode = btn.getAttribute('data-storage-mode');
+      if (!targetMode) return;
+      await setStorageTargetMode(targetMode);
+      const label = targetMode === 'railway'
+        ? "Railway Server (8 GB) — Yangi ma'lumotlar endi Railway'ga saqlanadi!"
+        : targetMode === 'both'
+          ? "Gibrid Rejim — Yangi ma'lumotlar bir vaqtda Railway va Firestore'ga saqlanadi!"
+          : "Cloud Firestore (1 GB) — Yangi ma'lumotlar Firestore'ga saqlanadi!";
+      if (showToast) showToast(label, 'success');
+      if (onModeChanged) onModeChanged(targetMode);
+    };
+  });
+
+  // 2. Firestore'dagi barcha ma'lumotlarni Railway'ga ham xavfsiz nusxalash
+  const syncBtn = container.querySelector('#sync-firestore-to-railway-btn');
+  if (syncBtn) {
+    syncBtn.onclick = async () => {
+      syncBtn.disabled = true;
+      const origHtml = syncBtn.innerHTML;
+      syncBtn.innerHTML = `<span>Nusxalanmoqda...</span>`;
+      try {
+        const res = await syncAllDataToRailway(state);
+        if (showToast) {
+          showToast(`Firestore'dagi barcha ma'lumotlar (${res?.syncedCount || 0} ta yozuv) zarar yetkazmasdan Railway 8GB bazasiga ham nusxalandi!`, 'success');
+        }
+        if (onRefreshData) await onRefreshData();
+        if (onModeChanged) onModeChanged(getStorageTargetMode());
+      } catch (err) {
+        if (showToast) showToast("Railway bazaga nusxalashda xatolik yuz berdi", 'error');
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = origHtml;
+      }
+    };
+  }
+
+  // 3. To'liq Zaxira (.JSON) yuklab olish
+  const backupBtn = container.querySelector('#download-full-backup-json-btn');
+  if (backupBtn) {
+    backupBtn.onclick = () => {
+      try {
+        downloadFullDatabaseBackup(state);
+        if (showToast) showToast("To'liq ma'lumotlar bazasi zaxirasi (.JSON) yuklab olindi!", 'success');
+      } catch (err) {
+        if (showToast) showToast("Zaxira faylni yuklab olishda xatolik", 'error');
+      }
+    };
+  }
+
+  // 4. Sig'im Kalkulyatori
   const calcInput = container.querySelector('#calc-students-count');
   const resultSize = container.querySelector('#calc-estimated-size');
   const resultText = container.querySelector('#calc-result-text');
@@ -610,18 +927,21 @@ export function attachStorageCalculatorEvents(container, avgStudentBytes) {
 
   function updateCalc(count) {
     const safeCount = Math.max(1, parseInt(count) || 1);
-    const estBytes = safeCount * avgStudentBytes;
+    const estBytes = safeCount * (avgStudentBytes || 1850);
     const estMB = (estBytes / (1024 * 1024)).toFixed(2);
     const estKB = (estBytes / 1024).toFixed(1);
-    const pct = ((estBytes / TOTAL_FREE_STORAGE_BYTES) * 100).toFixed(2);
+    const mode = getStorageTargetMode();
+    const capBytes = mode === 'railway' ? TOTAL_RAILWAY_STORAGE_BYTES : TOTAL_FREE_STORAGE_BYTES;
+    const capLabel = mode === 'railway' ? 'Railway 8 GB (8,192 MB)' : 'Firestore 1 GB (1,024 MB)';
+    const pct = ((estBytes / capBytes) * 100).toFixed(3);
 
     if (resultSize) {
       resultSize.textContent = estMB >= 1 ? `~${estMB} MB` : `~${estKB} KB`;
     }
     if (resultText) {
       resultText.innerHTML = `
-        ${safeCount.toLocaleString()} ta qo'shimcha o'quvchi Firestore'da taxminan <strong class="font-mono">${estMB >= 1 ? estMB + ' MB' : estKB + ' KB'}</strong> xotira egallaydi. 
-        Bu bepul 1 GB (1,024 MB) kvotaning atigi <strong class="font-mono">${pct}%</strong> qismini tashkil qiladi.
+        ${safeCount.toLocaleString()} ta qo'shimcha o'quvchi taxminan <strong class="font-mono">${estMB >= 1 ? estMB + ' MB' : estKB + ' KB'}</strong> xotira egallaydi. 
+        Bu ${capLabel} kvotaning atigi <strong class="font-mono">${pct}%</strong> qismini tashkil qiladi.
       `;
     }
   }

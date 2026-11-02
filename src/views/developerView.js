@@ -13,6 +13,7 @@ import {
   calculateStorageMetrics, 
   renderStorageMiniWidget, 
   renderDetailedStorageView, 
+  renderStorageEngineSelectorCard,
   attachStorageCalculatorEvents 
 } from './developerStorageView.js';
 
@@ -393,7 +394,7 @@ export function renderDeveloper(container, {
               }">${allPlatformRecords.length}</span>
             </button>
 
-            <!-- Yangi Tab: Aqlli Xotira & Sig'im (1 GB Bepul kvota) -->
+            <!-- Yangi Tab: Aqlli Xotira & Server (Railway 8GB + Firestore 1GB) -->
             <button 
               id="tab-storage-btn"
               class="flex-1 min-w-[70px] sm:min-w-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all cursor-pointer whitespace-nowrap shrink-0 ${
@@ -401,15 +402,15 @@ export function renderDeveloper(container, {
                   ? 'bg-emerald-50 text-emerald-700 shadow-2xs ring-1 ring-emerald-300' 
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }"
-              title="1 GB Bepul Xotira & Sig'im Tahlili (${storageMetrics.usedMB} MB / 1,024 MB)"
+              title="Baza va Xotira Boshqaruvi (${storageMetrics.usedMB} MB / ${storageMetrics.totalMB} MB)"
             >
               <svg class="w-4 h-4 shrink-0 ${activeTab === 'storage' ? 'text-emerald-600' : 'text-slate-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
               </svg>
-              <span class="hidden sm:inline">Aqlli Xotira</span>
+              <span class="hidden sm:inline">Baza & Xotira</span>
               <span class="px-1.5 py-0.2 rounded-md text-[10px] font-mono leading-tight ${
                 activeTab === 'storage' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200/80 text-slate-600'
-              }">1GB</span>
+              }">${storageMetrics.totalGB}GB</span>
             </button>
 
             <button 
@@ -745,6 +746,9 @@ export function renderDeveloper(container, {
         <!-- 3-TAB: SOZLAMALAR VA XAVFSIZLIK -->
         ${activeTab === 'settings' ? `
           <div class="space-y-6">
+
+            <!-- 0-Panel: Ma'lumotlarni Saqlash Serverini Tanlash (Cloud Firestore vs Railway 8GB) -->
+            ${renderStorageEngineSelectorCard(storageMetrics)}
             
             <!-- 1-Panel: Dasturchi Shaxsiy Ma'lumotlari -->
             <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
@@ -1959,22 +1963,25 @@ export function renderDeveloper(container, {
       };
     }
 
-    // Aqlli Xotira & Sig'im tab hodisalari
-    if (activeTab === 'storage') {
-      const refreshStorageBtn = container.querySelector('#refresh-storage-metrics-btn');
-      if (refreshStorageBtn) {
-        refreshStorageBtn.onclick = () => {
-          if (onRefreshData) {
-            Promise.resolve(onRefreshData()).finally(() => {
-              renderContent();
-            });
-          } else {
+    // Aqlli Xotira & Server boshqaruvi hodisalari (Mini-vidjet, Baza & Xotira tabi va Sozlamalar tabi uchun)
+    const refreshStorageBtn = container.querySelector('#refresh-storage-metrics-btn');
+    if (refreshStorageBtn) {
+      refreshStorageBtn.onclick = () => {
+        if (onRefreshData) {
+          Promise.resolve(onRefreshData()).finally(() => {
             renderContent();
-          }
-        };
-      }
-      attachStorageCalculatorEvents(container, storageMetrics.avgStudentBytes);
+          });
+        } else {
+          renderContent();
+        }
+      };
     }
+    attachStorageCalculatorEvents(container, storageMetrics.avgStudentBytes, {
+      state,
+      onRefreshData,
+      onModeChanged: () => renderContent(),
+      showToast
+    });
 
     // Tiklash so'rovlarini tasdiqlash, rad etish va o'chirish
     const approveBtns = container.querySelectorAll('.dev-approve-req-btn');
